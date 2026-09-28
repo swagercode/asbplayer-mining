@@ -4,7 +4,8 @@ import unittest
 import urllib.error
 from unittest.mock import patch
 
-from jev_ranker import options_from, payload_for, rank, should_recover_unparsed, uncovered_kanji_spans
+from jev_ranker import (boundary_contexts, options_from, payload_for, rank, respects_reading_guide,
+                        should_recover_unparsed, uncovered_kanji_spans)
 from pipeline import Pipeline
 
 
@@ -15,7 +16,8 @@ class RankedJevTests(unittest.TestCase):
         self.surfaces = ['ラム', '労力', '成果']
         self.raw = {'model': 'jev-1.13.0', 'answers': {
             'selection': {'probabilities': {'0': .4, '1': .3, '2': .2, '3': .05, '-1': .05}},
-            'name_0': {'noul': .99}, 'name_1': {'noul': 0}, 'name_2': {'noul': 0}}}
+            'name_0': {'noul': .99}, 'name_1': {'noul': 0}, 'name_2': {'noul': 0},
+            'boundary_0': {'noul': .9}, 'boundary_1': {'noul': .9}, 'boundary_2': {'noul': .9}}}
 
     def test_filters_names_and_threshold_and_keeps_highest_scored_reading(self):
         options = options_from('ラムの労力と成果', self.words, self.raw, self.surfaces, .05)
@@ -39,11 +41,51 @@ class RankedJevTests(unittest.TestCase):
         self.assertEqual(result['options'][0]['confidence'], .3)
         sent = json.loads(request.call_args.args[0].data)
         self.assertEqual(sent['model'], 'jev-1.13.0')
-        self.assertEqual(set(sent['questions']), {'selection', 'unparsed', 'name_0', 'name_1', 'name_2'})
+        self.assertEqual(set(sent['questions']), {'selection', 'unparsed', 'name_0', 'name_1', 'name_2',
+                                                'boundary_0', 'boundary_1', 'boundary_2'})
         self.assertIn('-2', sent['questions']['selection']['criteria'])
 
     def test_no_hidden_fallback_when_all_scores_are_low(self):
         self.assertEqual(options_from('', self.words, self.raw, self.surfaces, .9), [])
+
+    def test_context_check_rejects_a_rare_boundary_fragment_without_banning_the_spelling(self):
+        words = [{'surface': '品性', 'term': '品性', 'reading': 'ひんせい'},
+                 {'surface': 'いのう', 'term': 'いのう', 'reading': 'いのう'},
+                 {'surface': 'いのう', 'term': '異能', 'reading': 'いのう'}]
+        raw = {'answers': {'selection': {'probabilities': {'0': .1, '1': .4, '2': .5}},
+                          'name_0': {'noul': 0}, 'name_1': {'noul': 0},
+                          'boundary_0': {'noul': .95}, 'boundary_1': {'noul': .35}}}
+        result = options_from('品性にも品がないのう', words, raw, ['品性', 'いのう'], .01)
+        self.assertEqual([o['word'] for o in result], ['品性'])
+        raw['answers']['boundary_1']['noul'] = .87
+        result = options_from('彼のいのう', words, raw, ['品性', 'いのう'], .05)
+        self.assertEqual(result[0]['word'], '異能')
+
+    def test_boundary_context_marks_the_actual_surrounding_grammar(self):
+        self.assertEqual(boundary_contexts('品がないのう', 'いのう'), ['品がな【いのう】'])
+        self.assertEqual(boundary_contexts('（いのう）彼のいのう', 'いのう'), [' 彼の【いのう】'])
+
+    def test_boundary_score_is_not_the_candidate_display_cutoff(self):
+        for score in (.35, .5, .55, .6):
+            with self.subTest(score=score):
+                self.raw['answers']['boundary_1']['noul'] = score
+                result = options_from('労力と成果', self.words, self.raw, self.surfaces, .01)
+                self.assertEqual([o['word'] for o in result], ['成果'])
+
+    def test_explicit_reading_guide_outranks_a_rarer_dictionary_reading(self):
+        words = [{'surface': '輩', 'term': '輩', 'reading': r} for r in ('ともがら', 'やから')]
+        sentence = '品性の足りん輩(やから)は'
+        payload, surfaces = payload_for(sentence, words)
+        self.assertNotIn('0', payload['questions']['selection']['criteria'])
+        self.assertIn('1', payload['questions']['selection']['criteria'])
+        raw = {'answers': {'selection': {'probabilities': {'0': .9, '1': .1}},
+                          'name_0': {'noul': 0}, 'boundary_0': {'noul': .95}}}
+        result = options_from(sentence, words, raw, surfaces, .05)
+        self.assertEqual([o['reading'] for o in result], ['やから'])
+        self.assertTrue(respects_reading_guide('輩（ヤカラ）', words[1]))
+        self.assertTrue(respects_reading_guide('輩(ともがら)と輩(やから)', words[0]))
+        self.assertTrue(respects_reading_guide('汚(けが)した',
+                        {'surface': '汚', 'term': '汚す', 'reading': 'けがす'}))
 
     def test_openjev_provider_uses_its_own_endpoint_key_and_model_in_one_request(self):
         response = io.BytesIO(json.dumps(self.raw).encode())
