@@ -1,3 +1,5 @@
+import { defaultSettings } from '@project/common/settings';
+import { observeKeyBindSet } from './key-bind-settings';
 import { bindBufferedMiningShortcut } from '@project/extension/src/services/buffered-mining-shortcut';
 
 /** Small controls in the secondary viewer only; never draws over the episode. */
@@ -15,7 +17,13 @@ export function bindBufferedMiningViewer() {
         const panel = document.createElement('div');
         const mine = document.createElement('button');
         mine.textContent = 'Mine with Jev';
-        mine.title = 'N or V · current subtitle, or the previous subtitle during a gap';
+        let keys = defaultSettings.keyBindSet;
+        const stopSettings = observeKeyBindSet((updated) => {
+            keys = updated;
+            mine.title =
+                [keys.bufferedMiningNormal.keys, keys.bufferedMiningAudio.keys].filter(Boolean).join(' / ') +
+                ' · current subtitle, or the previous subtitle during a gap';
+        });
         const status = document.createElement('p');
         const details = document.createElement('details');
         const summary = document.createElement('summary');
@@ -37,11 +45,15 @@ export function bindBufferedMiningViewer() {
         };
         mine.onclick = () => queueCard();
         let enabled = false;
-        const unbindShortcut = bindBufferedMiningShortcut(queueCard, () => enabled);
+        const unbindShortcut = bindBufferedMiningShortcut(
+            queueCard,
+            () => enabled,
+            () => keys.bufferedMiningNormal.keys
+        );
         const unbindAudioShortcut = bindBufferedMiningShortcut(
             () => queueCard('audio'),
             () => enabled,
-            'v'
+            () => keys.bufferedMiningAudio.keys
         );
         const refresh = async () => {
             try {
@@ -80,6 +92,7 @@ export function bindBufferedMiningViewer() {
             'pagehide',
             () => {
                 clearInterval(timer);
+                stopSettings();
                 unbindShortcut();
                 unbindAudioShortcut();
             },

@@ -1,3 +1,4 @@
+import { supportsPlaybackShortcut } from '@project/common/key-binder/single-key-shortcut';
 import type { AsbplayerSettings, KeyBindName } from '@project/common/settings';
 import { useTranslation } from 'react-i18next';
 import { isMacOs } from 'react-device-detect';
@@ -56,6 +57,19 @@ const keyBindSectionByName: { [key in KeyBindName]: KeyboardShortcutSection } = 
     moveBottomSubtitlesDown: 'subtitles',
     moveTopSubtitlesUp: 'subtitles',
     moveTopSubtitlesDown: 'subtitles',
+    explainSentence: 'mining',
+    bufferedMiningNormal: 'mining',
+    bufferedMiningAudio: 'mining',
+    bufferedMiningCancel: 'mining',
+    bufferedMiningChoice1: 'mining',
+    bufferedMiningChoice2: 'mining',
+    bufferedMiningChoice3: 'mining',
+    bufferedMiningChoice4: 'mining',
+    bufferedMiningChoice5: 'mining',
+    bufferedMiningChoice6: 'mining',
+    bufferedMiningChoice7: 'mining',
+    bufferedMiningChoice8: 'mining',
+    bufferedMiningChoice9: 'mining',
     copySubtitle: 'mining',
     ankiExport: 'mining',
     updateLastCard: 'mining',
@@ -124,10 +138,18 @@ interface KeyBindFieldProps {
     keys: string;
     boundViaChrome: boolean;
     onKeysChange: (keys: string) => void;
+    singleKeyWithModifiers?: boolean;
     onOpenExtensionShortcuts: () => void;
 }
 
-function KeyBindField({ label, keys, boundViaChrome, onKeysChange, onOpenExtensionShortcuts }: KeyBindFieldProps) {
+function KeyBindField({
+    label,
+    keys,
+    boundViaChrome,
+    onKeysChange,
+    onOpenExtensionShortcuts,
+    singleKeyWithModifiers,
+}: KeyBindFieldProps) {
     const { t } = useTranslation();
     const theme = useTheme<Theme>();
     const classes = useKeyBindFieldStyles();
@@ -137,6 +159,7 @@ function KeyBindField({ label, keys, boundViaChrome, onKeysChange, onOpenExtensi
     const onKeysChangeRef = useRef<(keys: string) => void>(undefined);
     onKeysChangeRef.current = onKeysChange;
     const [editing, setEditing] = useState<boolean>(false);
+    const [invalidShortcut, setInvalidShortcut] = useState(false);
 
     useEffect(() => setCurrentKeyString(keys), [keys]);
 
@@ -152,6 +175,7 @@ function KeyBindField({ label, keys, boundViaChrome, onKeysChange, onOpenExtensi
             }
 
             setCurrentKeyString('');
+            setInvalidShortcut(false);
             setEditing(true);
         },
         [onOpenExtensionShortcuts, boundViaChrome]
@@ -195,14 +219,17 @@ function KeyBindField({ label, keys, boundViaChrome, onKeysChange, onOpenExtensi
                 // Need to use refs because hotkeys returns the wrong keys
                 // if the handler is bound/unbound.
                 if (currentKeyStringRef.current) {
-                    onKeysChangeRef.current!(currentKeyStringRef.current);
+                    if (singleKeyWithModifiers && !supportsPlaybackShortcut(currentKeyStringRef.current)) {
+                        setInvalidShortcut(true);
+                        setCurrentKeyString(keys);
+                    } else onKeysChangeRef.current!(currentKeyStringRef.current);
                 }
             }
         };
 
         hotkeys('*', { keyup: true }, handler);
         return () => hotkeys.unbind('*', handler);
-    }, [editing]);
+    }, [editing, keys, singleKeyWithModifiers]);
 
     useOutsideClickListener(
         ref,
@@ -244,7 +271,16 @@ function KeyBindField({ label, keys, boundViaChrome, onKeysChange, onOpenExtensi
                         size="small"
                         contentEditable={false}
                         disabled={boundViaChrome}
-                        helperText={boundViaChrome ? t('settings.extensionShortcut') : undefined}
+                        error={invalidShortcut}
+                        helperText={
+                            invalidShortcut
+                                ? t('settings.singleKeyShortcut', {
+                                      defaultValue: 'Use one key, optionally with Ctrl, Alt, Shift or Cmd.',
+                                  })
+                                : boundViaChrome
+                                  ? t('settings.extensionShortcut')
+                                  : undefined
+                        }
                         value={currentKeyString}
                         title={currentKeyString}
                         color="primary"
@@ -351,6 +387,19 @@ const KeyboardShortcutsSettingsTab: React.FC<Props> = ({
     );
     const keyBindProperties = useMemo<{ [key in KeyBindName]: KeyBindProperties }>(
         () => ({
+            explainSentence: { label: t('binds.explainSentence'), boundViaBrowser: false },
+            bufferedMiningNormal: { label: t('binds.bufferedMiningNormal'), boundViaBrowser: false },
+            bufferedMiningAudio: { label: t('binds.bufferedMiningAudio'), boundViaBrowser: false },
+            bufferedMiningCancel: { label: t('binds.bufferedMiningCancel'), boundViaBrowser: false },
+            bufferedMiningChoice1: { label: t('binds.bufferedMiningChoice1'), boundViaBrowser: false },
+            bufferedMiningChoice2: { label: t('binds.bufferedMiningChoice2'), boundViaBrowser: false },
+            bufferedMiningChoice3: { label: t('binds.bufferedMiningChoice3'), boundViaBrowser: false },
+            bufferedMiningChoice4: { label: t('binds.bufferedMiningChoice4'), boundViaBrowser: false },
+            bufferedMiningChoice5: { label: t('binds.bufferedMiningChoice5'), boundViaBrowser: false },
+            bufferedMiningChoice6: { label: t('binds.bufferedMiningChoice6'), boundViaBrowser: false },
+            bufferedMiningChoice7: { label: t('binds.bufferedMiningChoice7'), boundViaBrowser: false },
+            bufferedMiningChoice8: { label: t('binds.bufferedMiningChoice8'), boundViaBrowser: false },
+            bufferedMiningChoice9: { label: t('binds.bufferedMiningChoice9'), boundViaBrowser: false },
             copySubtitle: { label: t('binds.copySubtitle'), boundViaBrowser: true },
             ankiExport: { label: t('binds.ankiExport'), boundViaBrowser: true },
             updateLastCard: {
@@ -605,6 +654,9 @@ const KeyboardShortcutsSettingsTab: React.FC<Props> = ({
             <div key={keyBindName}>
                 <KeyBindField
                     label={properties.label}
+                    singleKeyWithModifiers={
+                        keyBindName.startsWith('bufferedMining') || keyBindName === 'explainSentence'
+                    }
                     keys={
                         extensionInstalled && properties.boundViaBrowser
                             ? (chromeKeyBinds[keyBindName] ?? '')

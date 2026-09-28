@@ -63,6 +63,19 @@ export function bindBufferedMiningHost(registry: TabRegistry) {
         let response: Promise<any>;
         if (request.action === 'mine' && (ownUi || viewer)) {
             response = mine(sender.tab?.id, request.cardType === 'audio' ? 'audio' : 'normal');
+        } else if (
+            ['explain', 'explanation-status'].includes(request.action) &&
+            content &&
+            !viewer &&
+            typeof request.id === 'string' &&
+            /^[a-f0-9-]{36}$/.test(request.id)
+        ) {
+            if (
+                request.action === 'explain' &&
+                (typeof request.sentence !== 'string' || !request.sentence.trim() || request.sentence.length > 5000)
+            )
+                return;
+            response = native({ action: request.action, id: request.id, sentence: request.sentence });
         } else if (request.action === 'status' && (ownUi || viewer)) {
             response = native({ action: 'status' });
         } else if (

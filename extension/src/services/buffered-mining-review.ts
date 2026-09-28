@@ -1,3 +1,5 @@
+import { defaultSettings, miningChoiceKeyBindNames } from '@project/common/settings';
+import type { KeyBindSet } from '@project/common/settings';
 import type { SubtitleModel } from '@project/common';
 import { bindSingleKeyShortcut } from '@project/common/key-binder/single-key-shortcut';
 
@@ -30,6 +32,7 @@ export interface MiningReviewView {
     showWord(word: string, reading?: string, definition?: string): void;
     showChoices(options: MiningWordOption[], choose: (option: MiningWordOption) => void): void;
     close(): void;
+    setKeyBindSet?(keys: KeyBindSet): void;
 }
 
 /** A small scan target lets the installed Yomitan render its own dictionary popup. */
@@ -48,7 +51,12 @@ export class YomitanMiningReview implements MiningReviewView {
     private showingWord = false;
     private scanDispatched = false;
 
-    constructor(private readonly video: HTMLVideoElement) {
+    private statusPrefix = '';
+
+    constructor(
+        private readonly video: HTMLVideoElement,
+        private keys = defaultSettings.keyBindSet
+    ) {
         this.panel.dataset.asbplayerMiningReview = '';
         this.panel.tabIndex = -1;
         this.panel.style.cssText =
@@ -110,10 +118,32 @@ export class YomitanMiningReview implements MiningReviewView {
         if (event.isTrusted && (event.type === 'pointerdown' || event.shiftKey)) this.stopFocusListener();
     };
 
+    setKeyBindSet(keys: KeyBindSet) {
+        this.keys = keys;
+        if (!this.panel.hasAttribute('data-asbplayer-mining-choices')) this.refreshStatus();
+        this.choices.querySelectorAll('button').forEach((button, i) => {
+            const label = this.keys[miningChoiceKeyBindNames[i]].keys.toUpperCase();
+            button.firstElementChild!.textContent = label;
+            button.setAttribute('aria-label', `${label ? label + ': ' : ''}${button.lastElementChild!.textContent}`);
+        });
+    }
+
+    private refreshStatus() {
+        const hints = [
+            [this.keys.bufferedMiningAudio.keys, 'audio'],
+            [this.keys.bufferedMiningNormal.keys, 'normal'],
+            [this.keys.bufferedMiningCancel.keys, 'skip'],
+        ]
+            .filter(([key]) => key)
+            .map(([key, action]) => `${key.toUpperCase()} ${action}`);
+        this.status.textContent = [this.statusPrefix, ...hints].filter(Boolean).join(' · ');
+    }
+
     message(text: string) {
         this.clearChoices();
         this.definition.textContent = '';
-        this.status.textContent = `${text} · V audio · N normal · B skip`;
+        this.statusPrefix = text;
+        this.refreshStatus();
     }
 
     private clearChoices() {
@@ -147,7 +177,7 @@ export class YomitanMiningReview implements MiningReviewView {
             button.setAttribute('aria-label', `${i + 1}: ${option.word}`);
             const number = document.createElement('span');
             number.style.cssText = 'font:600 24px/1.4 system-ui;color:#ddd;';
-            number.textContent = String(i + 1);
+            number.textContent = this.keys[miningChoiceKeyBindNames[i]].keys.toUpperCase();
             const word = document.createElement('span');
             word.style.cssText = 'font:500 clamp(36px,4vw,64px)/1.4 sans-serif;white-space:nowrap;';
             word.textContent = option.word;
@@ -159,14 +189,19 @@ export class YomitanMiningReview implements MiningReviewView {
         // invalid choice to Crunchyroll's seek shortcuts.
         for (let i = 0; i < 9; i++) {
             this.unbindChoices.push(
-                bindSingleKeyShortcut(String(i + 1), (event) => {
-                    event.preventDefault();
-                    event.stopImmediatePropagation();
-                    if (!event.repeat && options[i]) pick(options[i]);
-                    return true;
-                })
+                bindSingleKeyShortcut(
+                    () => this.keys[miningChoiceKeyBindNames[i]].keys,
+                    (event) => {
+                        if (document.querySelector('[data-asbplayer-sentence-explanation]')) return false;
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+                        if (!event.repeat && options[i]) pick(options[i]);
+                        return true;
+                    }
+                )
             );
         }
+        this.setKeyBindSet(this.keys);
         this.panel.focus({ preventScroll: true });
     }
 
@@ -179,7 +214,8 @@ export class YomitanMiningReview implements MiningReviewView {
         this.panel.style.width = '';
         this.showingWord = true;
         this.word.textContent = word;
-        this.status.textContent = `${reading || ''}${reading ? ' · ' : ''}V audio · N normal · B skip`;
+        this.statusPrefix = reading || '';
+        this.refreshStatus();
         this.definition.textContent = definition ? `Luna\n${definition}` : '';
         this.panel.focus({ preventScroll: true });
         // No dictionary entry exists for generated vocabulary. Show its definition
@@ -259,6 +295,14 @@ export class BufferedMiningReview {
         this.view.message('Finishing sentence audio…');
         video.addEventListener('timeupdate', this.pauseAfterSentence);
         this.pauseAfterSentence();
+    }
+
+    get sentence() {
+        return this.subtitle;
+    }
+
+    setKeyBindSet(keys: KeyBindSet) {
+        this.view.setKeyBindSet?.(keys);
     }
 
     private valid() {

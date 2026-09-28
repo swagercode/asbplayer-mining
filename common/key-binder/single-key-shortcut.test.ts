@@ -71,3 +71,68 @@ describe('document-start priority navigation', () => {
         expect(site).not.toHaveBeenCalled();
     });
 });
+
+describe('configurable priority shortcuts', () => {
+    it('remaps in place ahead of site listeners and preserves modifiers and full physical presses', () => {
+        let shortcut = 'ctrl+shift+j';
+        let enabled = true;
+        const priority = bindPriorityNavigationKeys(
+            () => [shortcut],
+            () => enabled
+        );
+        const site = jest.fn();
+        window.addEventListener('keydown', site, true);
+        window.addEventListener('keyup', site, true);
+        const action = jest.fn((event: KeyboardEvent) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            enabled = false;
+            return true;
+        });
+        const unbind = bindSingleKeyShortcut(() => shortcut, action);
+        const press = (type: string, key: string, init: KeyboardEventInit = {}) => {
+            const event = new KeyboardEvent(type, { key, bubbles: true, cancelable: true, ...init });
+            document.body.dispatchEvent(event);
+            return event;
+        };
+        try {
+            expect(press('keydown', 'j').defaultPrevented).toBe(false);
+            site.mockClear();
+            expect(press('keydown', 'J', { ctrlKey: true, shiftKey: true, code: 'KeyJ' }).defaultPrevented).toBe(true);
+            expect(action).toHaveBeenCalledTimes(1);
+            expect(action.mock.calls[0][0].ctrlKey).toBe(true);
+            expect(action.mock.calls[0][0].shiftKey).toBe(true);
+            // Modifier released first, settings changed and the overlay disappeared.
+            shortcut = '⌥+left';
+            expect(press('keyup', 'j', { code: 'KeyJ' }).defaultPrevented).toBe(true);
+            expect(site).not.toHaveBeenCalled();
+            enabled = true;
+            expect(press('keydown', 'j', { ctrlKey: true, shiftKey: true }).defaultPrevented).toBe(false);
+            expect(press('keydown', 'ArrowLeft', { altKey: true }).defaultPrevented).toBe(true);
+            expect(action).toHaveBeenCalledTimes(2);
+            shortcut = '';
+            enabled = true;
+            expect(press('keydown', 'ArrowLeft', { altKey: true }).defaultPrevented).toBe(false);
+        } finally {
+            priority();
+            unbind();
+            window.removeEventListener('keydown', site, true);
+            window.removeEventListener('keyup', site, true);
+        }
+    });
+});
+
+it.each([
+    ['shift+1', '!', 'Digit1', { shiftKey: true }],
+    ['⌥+J', '∆', 'KeyJ', { altKey: true }],
+    ['shift+[', '{', 'BracketLeft', { shiftKey: true }],
+])('matches %s even when the modifier changes the typed character', (shortcut, key, code, modifiers) => {
+    const action = jest.fn(() => true);
+    const unbind = bindSingleKeyShortcut(shortcut, action);
+    try {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key, code, ...modifiers, bubbles: true }));
+        expect(action).toHaveBeenCalledTimes(1);
+    } finally {
+        unbind();
+    }
+});

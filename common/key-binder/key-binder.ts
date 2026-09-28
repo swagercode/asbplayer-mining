@@ -2,7 +2,7 @@ import type { SubtitleModel } from '@project/common/src/model';
 import hotkeys from 'hotkeys-js';
 import type { KeyBindSet, SeekableTracks, TokenStatus } from '@project/common/settings';
 import { isTrackSeekable } from '@project/common/settings';
-import { bindSingleKeyShortcut } from '@project/common/key-binder/single-key-shortcut';
+import { bindSingleKeyShortcut, supportsPlaybackShortcut } from '@project/common/key-binder/single-key-shortcut';
 
 export function adjacentSubtitle(
     forward: boolean,
@@ -1158,7 +1158,7 @@ export class DefaultKeyBinder implements KeyBinder {
     }
 
     private _bindNavigation(shortcut: string, capture: boolean, handler: (event: KeyboardEvent) => boolean) {
-        if (capture && /^[a-z0-9]$/i.test(shortcut)) {
+        if (capture && supportsPlaybackShortcut(shortcut)) {
             return bindSingleKeyShortcut(shortcut, handler);
         }
         return this._bind(shortcut, capture, handler);

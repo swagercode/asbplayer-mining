@@ -1,3 +1,4 @@
+import { defaultSettings } from '@project/common/settings';
 import { YomitanMiningReview } from './buffered-mining-review';
 import { bindPriorityNavigationKeys } from '@project/common/key-binder/single-key-shortcut';
 
@@ -85,4 +86,34 @@ describe('fullscreen numbered mining choices', () => {
             root.remove();
         }
     });
+});
+
+it('updates candidate keys and review hints without rebuilding the open review', () => {
+    const video = document.createElement('video');
+    document.body.append(video);
+    const view = new YomitanMiningReview(video);
+    const pick = jest.fn();
+    const keys = {
+        ...defaultSettings.keyBindSet,
+        bufferedMiningChoice1: { keys: 'shift+Q' },
+        bufferedMiningNormal: { keys: 'J' },
+        bufferedMiningAudio: { keys: 'K' },
+        bufferedMiningCancel: { keys: 'L' },
+    };
+    try {
+        view.showChoices([{ index: 0, word: '労力', reading: 'ろうりょく', confidence: 0.8 }], pick);
+        view.setKeyBindSet(keys);
+        expect(document.querySelector('[data-asbplayer-mining-choices]')?.textContent).toBe('SHIFT+Q労力');
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }));
+        expect(pick).not.toHaveBeenCalled();
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Q', shiftKey: true, bubbles: true }));
+        expect(pick).toHaveBeenCalledTimes(1);
+        view.message('Ready');
+        expect(document.querySelector('[data-asbplayer-mining-review]')?.textContent).toContain(
+            'K audio · J normal · L skip'
+        );
+    } finally {
+        view.close();
+        video.remove();
+    }
 });

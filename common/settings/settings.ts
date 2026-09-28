@@ -456,6 +456,19 @@ export interface KeyBind {
 }
 
 export interface KeyBindSet {
+    readonly explainSentence: KeyBind;
+    readonly bufferedMiningNormal: KeyBind;
+    readonly bufferedMiningAudio: KeyBind;
+    readonly bufferedMiningCancel: KeyBind;
+    readonly bufferedMiningChoice1: KeyBind;
+    readonly bufferedMiningChoice2: KeyBind;
+    readonly bufferedMiningChoice3: KeyBind;
+    readonly bufferedMiningChoice4: KeyBind;
+    readonly bufferedMiningChoice5: KeyBind;
+    readonly bufferedMiningChoice6: KeyBind;
+    readonly bufferedMiningChoice7: KeyBind;
+    readonly bufferedMiningChoice8: KeyBind;
+    readonly bufferedMiningChoice9: KeyBind;
     readonly togglePlay: KeyBind;
     readonly toggleAutoPause: KeyBind;
     readonly toggleCondensedPlayback: KeyBind;
@@ -601,6 +614,18 @@ export interface StreamingVideoSettings {
     readonly streamingEnableOverlay: boolean;
     readonly streamingPages: PageSettings;
 }
+
+export const miningChoiceKeyBindNames = [
+    'bufferedMiningChoice1',
+    'bufferedMiningChoice2',
+    'bufferedMiningChoice3',
+    'bufferedMiningChoice4',
+    'bufferedMiningChoice5',
+    'bufferedMiningChoice6',
+    'bufferedMiningChoice7',
+    'bufferedMiningChoice8',
+    'bufferedMiningChoice9',
+] as const;
 
 export type KeyBindName = keyof KeyBindSet;
 

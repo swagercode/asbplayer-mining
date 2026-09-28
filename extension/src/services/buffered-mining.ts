@@ -1,7 +1,10 @@
+import { defaultSettings } from '@project/common/settings';
+import type { KeyBindSet } from '@project/common/settings';
+import { SentenceExplanationView } from './sentence-explanation';
 import type { SubtitleModel } from '@project/common';
 import { v4 as uuid } from 'uuid';
 import { bindBufferedMiningShortcut } from '@project/extension/src/services/buffered-mining-shortcut';
-import { BufferedMiningReview } from '@project/extension/src/services/buffered-mining-review';
+import { BufferedMiningReview, YomitanMiningReview } from '@project/extension/src/services/buffered-mining-review';
 import type { MiningCardType, MiningReviewPlayback } from '@project/extension/src/services/buffered-mining-review';
 
 type PlaybackSample = {
@@ -32,6 +35,14 @@ export function currentOrPreviousSubtitle<T extends SubtitleModel>(
 }
 
 export class BufferedMiningController {
+    private keys = defaultSettings.keyBindSet;
+    private unbindExplainShortcut?: () => void;
+    private explanation?: {
+        id: string;
+        view: SentenceExplanationView;
+        resume: boolean;
+        timer?: ReturnType<typeof setTimeout>;
+    };
     private readonly session = uuid();
     private timer?: ReturnType<typeof setInterval>;
     private unbindShortcut?: () => void;
@@ -63,6 +74,7 @@ export class BufferedMiningController {
                 this.review?.dispose();
                 this.review = undefined;
             }
+            void this.closeExplanation(false);
             this.epoch++;
             this.lastSource = source;
             this.history = [];
@@ -92,13 +104,57 @@ export class BufferedMiningController {
         void this.send('observe', { sample }).catch(() => {});
     };
 
+    setKeyBindSet(keys: KeyBindSet) {
+        this.keys = keys;
+        this.review?.setKeyBindSet(keys);
+        this.explanation?.view.setKeyBindSet(keys);
+    }
+
+    async closeExplanation(resume = true) {
+        const explanation = this.explanation;
+        if (!explanation) return;
+        this.explanation = undefined;
+        clearTimeout(explanation.timer);
+        explanation.view.close();
+        if (resume && explanation.resume && this.video.isConnected) await this.reviewPlayback?.play();
+    }
+
+    async explain() {
+        if (this.explanation) return this.closeExplanation();
+        const subtitle = this.review?.sentence ?? currentOrPreviousSubtitle(this.subtitles(), this.currentTime());
+        if (!subtitle || !this.reviewPlayback) return;
+        const id = uuid();
+        const resume = !this.video.paused;
+        this.reviewPlayback.pause();
+        const view = new SentenceExplanationView(this.video, subtitle.text, this.keys, () => {
+            void this.closeExplanation().catch(() => {});
+        });
+        const explanation = { id, view, resume, timer: undefined as ReturnType<typeof setTimeout> | undefined };
+        this.explanation = explanation;
+        const poll = async (action: string) => {
+            const result = await this.send(action, {
+                id,
+                ...(action === 'explain' ? { sentence: subtitle.text } : {}),
+            }).catch(() => ({ error: 'The sentence explanation bridge is unavailable.' }));
+            if (this.explanation !== explanation) return;
+            if (result.error) view.show(result.error);
+            else if (result.text) view.show(result.text);
+            else explanation.timer = setTimeout(() => void poll('explanation-status'), 300);
+        };
+        await poll('explain');
+    }
+
     bind() {
         this.unbindShortcut?.();
         this.unbindShortcut = bindBufferedMiningShortcut(
             () => {
                 void this.mine().catch(() => {});
             },
-            () => this.video.isConnected && (this.review !== undefined || this.subtitles().length > 0)
+            () =>
+                !this.explanation &&
+                this.video.isConnected &&
+                (this.review !== undefined || this.subtitles().length > 0),
+            () => this.keys.bufferedMiningNormal.keys
         );
         this.unbindCancelShortcut?.();
         this.unbindAudioShortcut?.();
@@ -106,15 +162,26 @@ export class BufferedMiningController {
             () => {
                 void this.mine('audio').catch(() => {});
             },
-            () => this.video.isConnected && (this.review !== undefined || this.subtitles().length > 0),
-            'v'
+            () =>
+                !this.explanation &&
+                this.video.isConnected &&
+                (this.review !== undefined || this.subtitles().length > 0),
+            () => this.keys.bufferedMiningAudio.keys
         );
         this.unbindCancelShortcut = bindBufferedMiningShortcut(
             () => {
-                void this.cancelReview().catch(() => {});
+                void (this.explanation ? this.closeExplanation() : this.cancelReview()).catch(() => {});
             },
-            () => this.video.isConnected && this.review !== undefined,
-            'b'
+            () => this.video.isConnected && (this.review !== undefined || this.explanation !== undefined),
+            () => this.keys.bufferedMiningCancel.keys
+        );
+        this.unbindExplainShortcut?.();
+        this.unbindExplainShortcut = bindBufferedMiningShortcut(
+            () => {
+                void this.explain().catch(() => {});
+            },
+            () => this.video.isConnected && (this.explanation !== undefined || this.subtitles().length > 0),
+            () => this.keys.explainSentence.keys
         );
         this.timer = setInterval(this.observe, 1000);
         for (const event of this.events) this.video.addEventListener(event, this.observe);
@@ -123,6 +190,8 @@ export class BufferedMiningController {
     }
 
     unbind() {
+        void this.closeExplanation(false);
+        this.unbindExplainShortcut?.();
         this.review?.dispose();
         this.review = undefined;
         this.unbindShortcut?.();
@@ -142,6 +211,7 @@ export class BufferedMiningController {
     }
 
     async mine(cardType: MiningCardType = 'normal') {
+        if (this.explanation) return { error: 'Close the sentence explanation before mining.' };
         if (this.review) {
             const review = this.review;
             this.review = undefined;
@@ -165,7 +235,7 @@ export class BufferedMiningController {
                   this.source,
                   this.reviewPlayback,
                   () => this.send('job-status', { id }),
-                  undefined,
+                  new YomitanMiningReview(this.video, this.keys),
                   (index) => this.send('choose', { id, index }),
                   () => this.send('cancel-choice', { id }),
                   (cardType) => this.send('confirm-choice', { id, cardType })

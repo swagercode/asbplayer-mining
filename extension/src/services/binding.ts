@@ -1341,6 +1341,7 @@ export default class Binding {
         );
         this.postMinePlayback = currentSettings.postMiningPlaybackState;
         this.keyBindings.setKeyBindSet(this, currentSettings.keyBindSet);
+        this.bufferedMining?.setKeyBindSet(currentSettings.keyBindSet);
 
         if (currentSettings.streamingSubsDragAndDrop) {
             this.dragController.bind(this);

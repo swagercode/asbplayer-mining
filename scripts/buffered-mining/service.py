@@ -14,6 +14,7 @@ import time
 
 from media import Obs, extract, wall_ranges
 from pipeline import Pipeline
+from sentence_explanation import Explanations
 from jev_ranker import should_recover_unparsed
 
 ROOT = Path(__file__).resolve().parent
@@ -63,6 +64,7 @@ def merge_samples(existing, incoming):
 class Queue:
     def __init__(self, config, root=ROOT, resume=True):
         self.config, self.root = config, root
+        self.explanations = Explanations(config)
         self.jobs = {}
         self.history = {}
         self.lock = threading.RLock()
@@ -232,7 +234,7 @@ class Queue:
                 self.change(job_id, selectionCandidates=candidates, options=options,
                             rankingSeconds=result['seconds'], rankingModel=result['model'],
                             rankingResult=result.get('raw'), selectionError='' if options else
-                            'No word meets the confidence threshold. Press N to resume.')
+                            'No word meets the confidence threshold. Use the skip shortcut to resume.')
                 if job['hasMedia']:
                     self.change(job_id, state='awaiting choice' if options else 'failed',
                                 error=job.get('selectionError', ''))
@@ -400,6 +402,8 @@ class Queue:
             self.change(job_id, state='failed', error=str(error), exportStarted=False)
 
     def handle(self, request):
+        if request.get('action') in ('explain', 'explanation-status'):
+            return self.explanations.handle(request)
         action = request.get('action')
         if action == 'observe':
             self.observe(request['sample'])

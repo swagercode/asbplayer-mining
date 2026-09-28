@@ -245,3 +245,20 @@ it('targets correct values for text subtitle ', () => {
         subtitleCustomStyles: [],
     });
 });
+
+it('migrates old keybind sets without overwriting custom or disabled shortcuts', async () => {
+    const storage = new MockSettingsStorage();
+    await storage.set({
+        keyBindSet: {
+            seekToPreviousSubtitle: { keys: 'ctrl+left' },
+            bufferedMiningNormal: { keys: '' },
+        } as any,
+    });
+    const keys = await new SettingsProvider(storage).getSingle('keyBindSet');
+    expect(keys.seekToPreviousSubtitle.keys).toBe('ctrl+left');
+    expect(keys.bufferedMiningNormal.keys).toBe('');
+    expect(keys.bufferedMiningAudio.keys).toBe('V');
+    expect(keys.bufferedMiningCancel.keys).toBe('B');
+    expect(keys.bufferedMiningChoice9.keys).toBe('9');
+    expect(keys.explainSentence.keys).toBe('F');
+});
