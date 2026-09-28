@@ -17,7 +17,10 @@ class SentenceExplanationTests(unittest.TestCase):
             self.assertNotIn('OPENAI_API_KEY', kwargs['env'])
             self.assertEqual(json.loads(kwargs['input']), {'sentence': '品がないのう'})
             instructions = json.loads(next(x.split('=', 1)[1] for x in args if x.startswith('model_instructions_file=')))
-            self.assertIn('Do not think at length', Path(instructions).read_text())
+            prompt = Path(instructions).read_text()
+            self.assertIn('Do not think at length', prompt)
+            self.assertIn('entirely in Japanese', prompt)
+            self.assertIn('Do not translate into English', prompt)
             Path(args[args.index('--output-last-message') + 1]).write_text(json.dumps({'text': 'Explanation'}))
             return type('Result', (), {'returncode': 0})()
         with patch('sentence_explanation.subprocess.run', side_effect=run), patch.dict('os.environ', {'OPENAI_API_KEY': 'unused'}):

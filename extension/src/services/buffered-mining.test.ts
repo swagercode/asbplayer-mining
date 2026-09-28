@@ -230,6 +230,54 @@ describe('buffered mining button', () => {
     });
 });
 
+it('keeps an early accepted review attached until capture finishes, so repeated keys cannot queue another card', async () => {
+    const originalBrowser = (globalThis as any).browser;
+    const sendMessage = jest
+        .fn()
+        .mockImplementation(async ({ action }) =>
+            action === 'job-status'
+                ? { options: [{ index: 0, word: '労力', reading: 'ろうりょく', confidence: 0.9 }] }
+                : {}
+        );
+    (globalThis as any).browser = { runtime: { sendMessage } };
+    const showWord = jest.spyOn(YomitanMiningReview.prototype, 'showWord').mockImplementation(() => {});
+    const video = document.createElement('video');
+    let media = 2000;
+    const playback = {
+        pause: jest.fn(),
+        seek: jest.fn().mockResolvedValue(undefined),
+        play: jest.fn().mockResolvedValue(undefined),
+    };
+    const controller = new BufferedMiningController(
+        video,
+        () => [cue('労力に見合った成果', 1000, 3000)],
+        () => media,
+        () => 'episode',
+        playback
+    );
+    try {
+        await controller.mine();
+        await Promise.resolve();
+        const accepted = controller.mine('audio');
+        const repeated = controller.mine('normal');
+        expect(sendMessage.mock.calls.filter(([m]) => m.action === 'enqueue')).toHaveLength(1);
+        expect(playback.seek).not.toHaveBeenCalled();
+        media = 3000;
+        video.dispatchEvent(new Event('timeupdate'));
+        await Promise.all([accepted, repeated]);
+        expect(sendMessage.mock.calls.filter(([m]) => m.action === 'enqueue')).toHaveLength(1);
+        expect(sendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ action: 'confirm-choice', cardType: 'audio' })
+        );
+        expect(playback.seek).toHaveBeenCalledTimes(1);
+        expect(playback.play).toHaveBeenCalledTimes(1);
+    } finally {
+        controller.unbind();
+        showWord.mockRestore();
+        (globalThis as any).browser = originalBrowser;
+    }
+});
+
 describe('buffered mining subtitle selection', () => {
     const subtitles = [cue('前の文', 1000, 2000), cue('現在の文', 3000, 4000), cue('次の文', 5000, 6000)];
     it('uses the current subtitle', () => {

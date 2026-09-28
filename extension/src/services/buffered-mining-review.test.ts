@@ -110,7 +110,7 @@ describe('mining definition review', () => {
         expect(view.showWord).not.toHaveBeenCalled();
     });
 
-    it('prepares choices during speech, shows them at the cue boundary, and opens the word before the choose response', async () => {
+    it('shows choices and the selected definition during speech, without waiting for audio or the choose response', async () => {
         review.dispose();
         const option = { index: 12, word: '労力', reading: 'ろうりょく', confidence: 0.8 };
         const choose = jest.fn().mockReturnValue(new Promise(() => {}));
@@ -130,18 +130,20 @@ describe('mining definition review', () => {
             cancel
         );
         await review.queued({});
-        expect(view.showChoices).not.toHaveBeenCalled();
-        expect(playback.pause).not.toHaveBeenCalled();
-        media = 3000;
-        video.dispatchEvent(new Event('timeupdate'));
         expect(view.showChoices).toHaveBeenCalledWith(options, expect.any(Function));
+        expect(playback.pause).not.toHaveBeenCalled();
         const pick = view.showChoices.mock.calls[0][1];
         pick(option);
         pick(option);
         expect(choose).toHaveBeenCalledTimes(1);
         expect(choose).toHaveBeenCalledWith(12);
         expect(view.showWord).toHaveBeenCalledWith('労力', 'ろうりょく');
+        expect(playback.pause).not.toHaveBeenCalled();
+        media = 3000;
+        video.dispatchEvent(new Event('timeupdate'));
         expect(playback.pause).toHaveBeenCalledTimes(1);
+        expect(view.showChoices).toHaveBeenCalledTimes(1);
+        expect(view.showWord).toHaveBeenCalledTimes(1);
         await review.resume();
         expect(cancel).not.toHaveBeenCalled();
         expect(playback.play).toHaveBeenCalledTimes(1);
@@ -171,8 +173,9 @@ describe('mining definition review', () => {
             );
             await review.queued({});
             if (!afterPause) {
-                expect(choose).not.toHaveBeenCalled();
-                expect(view.showWord).not.toHaveBeenCalled();
+                expect(choose).toHaveBeenCalledWith(option.index);
+                expect(view.showWord).toHaveBeenCalledWith(option.word, option.reading);
+                expect(playback.pause).not.toHaveBeenCalled();
                 media = 3000;
                 video.dispatchEvent(new Event('timeupdate'));
             }
@@ -366,4 +369,105 @@ describe('mining definition review', () => {
         expect(playback.seek).not.toHaveBeenCalled();
         expect(cancel).toHaveBeenCalledTimes(1);
     });
+
+    it.each(['normal', 'audio'] as const)(
+        'early %s acceptance finishes natural capture before replaying once',
+        async (cardType) => {
+            review.dispose();
+            const option = { index: 0, word: '労力', reading: 'ろうりょく', confidence: 0.8 };
+            const choose = jest.fn().mockResolvedValue({ word: option.word });
+            const confirm = jest.fn().mockResolvedValue({});
+            const cancel = jest.fn().mockResolvedValue({});
+            status.mockResolvedValue({ options: [option] });
+            review = new BufferedMiningReview(
+                'job',
+                subtitle,
+                video,
+                () => media,
+                () => source,
+                playback,
+                status,
+                view,
+                choose,
+                cancel,
+                confirm
+            );
+            await review.queued({});
+            const accepting = review.resume(cardType);
+            expect(review.resume(cardType === 'normal' ? 'audio' : 'normal')).toBe(accepting);
+            expect(playback.seek).not.toHaveBeenCalled();
+            expect(playback.pause).not.toHaveBeenCalled();
+            expect(confirm).not.toHaveBeenCalled();
+            expect(review.closed).toBe(false);
+            media = 2999;
+            video.dispatchEvent(new Event('timeupdate'));
+            expect(playback.seek).not.toHaveBeenCalled();
+            media = 3000;
+            video.dispatchEvent(new Event('timeupdate'));
+            await accepting;
+            await Promise.resolve();
+            expect(confirm).toHaveBeenCalledTimes(1);
+            expect(confirm).toHaveBeenCalledWith(cardType);
+            expect(playback.seek).toHaveBeenCalledTimes(1);
+            expect(playback.seek).toHaveBeenCalledWith(subtitle.start);
+            expect(playback.play).toHaveBeenCalledTimes(1);
+            expect(review.closed).toBe(true);
+            expect(cancel).not.toHaveBeenCalled();
+            media = 5000;
+            video.dispatchEvent(new Event('timeupdate'));
+            expect(playback.pause).toHaveBeenCalledTimes(1);
+        }
+    );
+
+    it.each(['cancel', 'episode change', 'failure'])(
+        '%s stops an early acceptance from replaying or saving later',
+        async (reason) => {
+            review.dispose();
+            const option = { index: 0, word: '労力', reading: 'ろうりょく', confidence: 0.8 };
+            let finishChoose!: (value: MiningReviewStatus) => void;
+            const choose = jest.fn(
+                () =>
+                    new Promise<MiningReviewStatus>((resolve) => {
+                        finishChoose = resolve;
+                    })
+            );
+            const confirm = jest.fn().mockResolvedValue({});
+            const cancel = jest.fn().mockResolvedValue({});
+            status.mockResolvedValue({ options: [option] });
+            review = new BufferedMiningReview(
+                'job',
+                subtitle,
+                video,
+                () => media,
+                () => source,
+                playback,
+                status,
+                view,
+                choose,
+                cancel,
+                confirm
+            );
+            await review.queued({});
+            const accepting = review.resume();
+            if (reason === 'cancel') await review.cancel();
+            else if (reason === 'episode change') {
+                source = 'episode two';
+                video.dispatchEvent(new Event('timeupdate'));
+            } else finishChoose({ error: 'Choice failed' });
+            await accepting;
+            if (reason !== 'failure') finishChoose({ word: option.word });
+            await Promise.resolve();
+            media = 3500;
+            video.dispatchEvent(new Event('timeupdate'));
+            expect(playback.seek).not.toHaveBeenCalled();
+            expect(confirm).not.toHaveBeenCalled();
+            if (reason === 'failure') {
+                expect(view.message).toHaveBeenLastCalledWith('Choice failed');
+                expect(review.closed).toBe(false);
+                // A fresh acceptance can still close the error screen.
+                await review.resume();
+                expect(review.closed).toBe(true);
+            }
+        }
+    );
 });

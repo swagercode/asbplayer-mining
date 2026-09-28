@@ -277,6 +277,8 @@ export class BufferedMiningReview {
     private selection?: Promise<MiningReviewStatus>;
     private choicesShown = false;
     private pendingOptions?: MiningWordOption[];
+    private resumePromise?: Promise<void>;
+    private finishSentenceWait?: (finished: boolean) => void;
 
     constructor(
         readonly id: string,
@@ -295,6 +297,10 @@ export class BufferedMiningReview {
         this.view.message('Finishing sentence audio…');
         video.addEventListener('timeupdate', this.pauseAfterSentence);
         this.pauseAfterSentence();
+    }
+
+    get closed() {
+        return !this.active;
     }
 
     get sentence() {
@@ -316,12 +322,14 @@ export class BufferedMiningReview {
         this.playback.pause();
         if (!this.choicesShown && !this.chosen) this.view.message('Choosing word…');
         this.showReadyChoices();
+        this.finishSentenceWait?.(true);
+        this.finishSentenceWait = undefined;
     };
 
     private showReadyChoices() {
-        // Finish hearing the cue before allowing a choice followed by N to seek
-        // backward; otherwise that immediate seek would discard uncaptured audio.
-        if (!this.paused || this.choicesShown || this.chosen || !this.pendingOptions?.length || !this.choose) return;
+        // Ranking and review can happen while the rest of the sentence is captured.
+        // Only the replay seek on acceptance needs to wait for the cue boundary.
+        if (this.choicesShown || this.chosen || !this.pendingOptions?.length || !this.choose) return;
         this.choicesShown = true;
         if (this.pendingOptions.length === 1) {
             void this.pick(this.pendingOptions[0]);
@@ -389,6 +397,8 @@ export class BufferedMiningReview {
     }
 
     private fail(error: string) {
+        this.finishSentenceWait?.(false);
+        this.finishSentenceWait = undefined;
         this.chosen = false;
         this.video.removeEventListener('timeupdate', this.pauseAfterSentence);
         if (!this.paused) this.playback.pause();
@@ -403,7 +413,21 @@ export class BufferedMiningReview {
         if (valid && this.source() === this.originalSource) await this.playback.play();
     }
 
-    async resume(cardType: MiningCardType = 'normal') {
+    resume(cardType: MiningCardType = 'normal') {
+        // Repeated acceptance while audio finishes keeps the original card type.
+        this.resumePromise ??= this.finishResume(cardType).finally(() => {
+            this.resumePromise = undefined;
+        });
+        return this.resumePromise;
+    }
+
+    private async finishResume(cardType: MiningCardType) {
+        if (this.valid() && this.chosen && !this.paused && this.currentTime() < this.subtitle.end) {
+            const finished = await new Promise<boolean>((resolve) => {
+                this.finishSentenceWait = resolve;
+            });
+            if (!finished) return;
+        }
         const valid = this.valid();
         this.accepted = valid && this.chosen;
         if (this.accepted) {
@@ -439,6 +463,8 @@ export class BufferedMiningReview {
     dispose() {
         if (!this.active) return;
         this.active = false;
+        this.finishSentenceWait?.(false);
+        this.finishSentenceWait = undefined;
         if (!this.accepted) void this.cancelChoice?.().catch(() => {});
         clearTimeout(this.timer);
         this.video.removeEventListener('timeupdate', this.pauseAfterSentence);

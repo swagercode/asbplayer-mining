@@ -214,10 +214,13 @@ export class BufferedMiningController {
         if (this.explanation) return { error: 'Close the sentence explanation before mining.' };
         if (this.review) {
             const review = this.review;
-            this.review = undefined;
             this.lastMine = Date.now();
-            await review.resume(cardType);
-            return { reviewClosed: true };
+            try {
+                await review.resume(cardType);
+            } finally {
+                if (this.review === review && review.closed) this.review = undefined;
+            }
+            return { reviewClosed: review.closed };
         }
         // Ignore keyboard repeat/double-clicks, but never wait for a preceding job.
         if (Date.now() - this.lastMine < 400) return { queued: false };
