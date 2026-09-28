@@ -1,0 +1,121 @@
+const js = require('@eslint/js');
+const importPlugin = require('eslint-plugin-import');
+const reactRecommended = require('eslint-plugin-react/configs/recommended');
+const reactHooks = require('eslint-plugin-react-hooks');
+const typescriptParser = require('@typescript-eslint/parser');
+const tseslint = require('typescript-eslint');
+const globals = require('globals');
+
+const globalsBrowser = { ...globals.browser };
+
+if (!('AudioWorkletGlobalScope' in globalsBrowser)) {
+    // This particular key in the globals object has a trailing space, so for now we work around that problem here
+    globalsBrowser['AudioWorkletGlobalScope'] = globalsBrowser['AudioWorkletGlobalScope '];
+    delete globalsBrowser['AudioWorkletGlobalScope '];
+}
+
+module.exports = [
+    js.configs.recommended,
+    ...tseslint.configs.recommended,
+    {
+        files: ['**/*.{js,mjs,cjs,jsx,mjsx,ts,tsx,mtsx}'],
+        ...reactRecommended,
+        rules: {
+            ...reactRecommended.rules,
+            ...reactHooks.configs.recommended.rules,
+            'react/jsx-uses-react': 'off',
+            'react/react-in-jsx-scope': 'off',
+            'react/prop-types': 'off',
+            'import/no-duplicates': 'error',
+            'no-restricted-properties': [
+                'error',
+                { object: 'console', property: 'log', message: 'Use asbLog.' },
+                { object: 'console', property: 'info', message: 'Use asbInfo.' },
+                { object: 'console', property: 'warn', message: 'Use asbWarn.' },
+                { object: 'console', property: 'error', message: 'Use asbError.' },
+                { object: 'console', property: 'debug', message: 'Use the asbplayer logging functions.' },
+                { object: 'console', property: 'trace', message: 'Use the asbplayer logging functions.' },
+                { object: 'console', property: 'assert', message: 'Use the asbplayer logging functions.' },
+            ],
+            'no-restricted-imports': [
+                'error',
+                {
+                    patterns: [
+                        {
+                            group: ['./*', '../*'],
+                            message: 'Use @project imports instead of relative imports.',
+                        },
+                    ],
+                },
+            ],
+        },
+        plugins: {
+            import: importPlugin,
+            ...reactRecommended.plugins,
+            'react-hooks': { rules: { ...reactHooks.rules } },
+        },
+        settings: {
+            ...reactRecommended.settings,
+            react: {
+                version: 'detect',
+            },
+        },
+        languageOptions: {
+            ...reactRecommended.languageOptions,
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+            parser: typescriptParser,
+            parserOptions: {
+                ecmaFeatures: {
+                    jsx: true,
+                },
+            },
+            globals: {
+                ...globals.serviceworker,
+                ...globalsBrowser,
+            },
+        },
+    },
+    {
+        files: ['**/index.{js,mjs,cjs,jsx,mjsx,ts,tsx,mtsx}'],
+        rules: {
+            'no-restricted-imports': 'off',
+        },
+    },
+    {
+        files: ['**/*.{ts,tsx,mtsx}'],
+        plugins: {
+            '@typescript-eslint': tseslint.plugin,
+        },
+        rules: {
+            'import/consistent-type-specifier-style': ['error', 'prefer-top-level'],
+            '@typescript-eslint/no-import-type-side-effects': 'error',
+            '@typescript-eslint/consistent-type-imports': 'error',
+            '@typescript-eslint/consistent-type-exports': 'error',
+            '@typescript-eslint/no-unnecessary-type-assertion': 'error',
+            '@typescript-eslint/return-await': 'error',
+            '@typescript-eslint/await-thenable': 'error',
+            '@typescript-eslint/no-floating-promises': 'error',
+            '@typescript-eslint/no-misused-promises': [
+                'error',
+                {
+                    checksVoidReturn: {
+                        attributes: false,
+                    },
+                },
+            ],
+            '@typescript-eslint/no-explicit-any': 'off',
+        },
+        languageOptions: {
+            parser: typescriptParser,
+            parserOptions: {
+                project: [
+                    './common/tsconfig.eslint.json',
+                    './client/tsconfig.eslint.json',
+                    './extension/tsconfig.eslint.json',
+                ],
+                tsconfigRootDir: __dirname,
+            },
+        },
+    },
+];

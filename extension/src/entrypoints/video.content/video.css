@@ -1,0 +1,336 @@
+.asbplayer-subtitles-container-bottom {
+    position: absolute !important;
+    transform: translate(-50%, -100%) !important;
+    display: inline-block !important;
+    z-index: 2147483646 !important;
+    pointer-events: auto !important;
+}
+
+.asbplayer-subtitles-container-top {
+    position: absolute !important;
+    transform: translate(-50%) !important;
+    display: inline-block !important;
+    z-index: 2147483646 !important;
+    pointer-events: auto !important;
+}
+
+.asbplayer-subtitles,
+.asbplayer-fullscreen-subtitles {
+    text-align: center !important;
+    color: white;
+    text-shadow: none;
+    font-family: sans-serif;
+    font-size: 36px;
+    font-style: normal;
+    font-stretch: normal;
+    font-variant: normal;
+    letter-spacing: normal;
+    text-transform: none;
+    padding-left: 10px;
+    padding-right: 10px;
+    user-select: text !important;
+    cursor: text !important;
+    white-space: pre-wrap !important;
+}
+
+div.asbplayer-subtitles,
+div.asbplayer-fullscreen-subtitles {
+    line-height: 0 !important;
+}
+
+div.asbplayer-subtitles > span,
+div.asbplayer-fullscreen-subtitles > span {
+    line-height: normal !important;
+}
+
+/* Subtitle annotations wrap text in extra token/ruby elements; keep their font
+   size inheriting from the subtitle so the host page's element styles can't
+   resize them. */
+.asbplayer-subtitles > span span,
+.asbplayer-subtitles > span ruby,
+.asbplayer-fullscreen-subtitles > span span,
+.asbplayer-fullscreen-subtitles > span ruby {
+    font-size: inherit !important;
+}
+
+.asbplayer-subtitles-blurred {
+    display: inline-block; /* Blur ruby annotations as well */
+    filter: blur(10px);
+}
+
+.asbplayer-subtitles-blurred:hover {
+    filter: none;
+}
+
+.asbplayer-subtitle-rich {
+    display: none;
+}
+
+.asbplayer-subtitles:hover .asbplayer-subtitle-text,
+.asbplayer-fullscreen-subtitles:hover .asbplayer-subtitle-text {
+    display: none;
+}
+
+.asbplayer-subtitles:hover .asbplayer-subtitle-rich,
+.asbplayer-fullscreen-subtitles:hover .asbplayer-subtitle-rich {
+    display: inline;
+}
+
+.asbplayer-token-container:focus-within .asb-token-highlight:hover {
+    background-color: rgb(0, 123, 255) !important;
+}
+
+.asbplayer-token-container:focus-within {
+    outline: none;
+}
+
+.asbplayer-notification-container-bottom {
+    position: absolute !important;
+    left: 50%;
+    transform: translate(-50%, -100%);
+    display: inline-block;
+    z-index: 2147483646 !important;
+}
+
+.asbplayer-notification-container-top {
+    position: absolute !important;
+    left: 50%;
+    transform: translate(-50%);
+    display: inline-block;
+    z-index: 2147483646 !important;
+}
+
+.asbplayer-notification {
+    text-align: center !important;
+    color: white;
+    text-shadow:
+        0 0 2px black,
+        0 0 2px black,
+        0 0 2px black,
+        0 0 2px black;
+    font-size: 24px;
+    padding-left: 10px;
+    padding-right: 10px;
+    line-height: normal !important;
+    white-space: pre-wrap !important;
+    user-select: none;
+    pointer-events: none;
+}
+
+.asb-reading {
+    ruby-position: over !important;
+}
+
+.asb-reading rt {
+    font-size: var(--asb-reading-size) !important;
+    line-height: 1 !important;
+    display: revert !important; /* Safari doesn't support 'ruby-text' */
+}
+
+.asb-pitch-accent {
+    --asb-pitch-accent-lift: var(--asb-pitch-accent-size); /* Extra space to clear diacritics */
+    display: inline-block;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+.asb-pitch-accent-mora {
+    display: inline-block;
+    position: relative;
+    padding: 0 0.12ch;
+    line-height: 1;
+}
+
+.asb-pitch-accent-mora::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: var(--asb-pitch-accent-size);
+    background: var(--asb-pitch-accent-color);
+    pointer-events: none;
+}
+
+.asb-pitch-accent-mora-high::after {
+    top: calc(-1 * var(--asb-pitch-accent-lift));
+}
+
+.asb-pitch-accent-mora-low::after {
+    bottom: 0;
+}
+
+.asb-pitch-accent-line {
+    display: inline-block;
+    width: var(--asb-pitch-accent-size);
+    height: calc(1em + var(--asb-pitch-accent-lift));
+    margin: 0 calc(var(--asb-pitch-accent-size) / -2);
+    position: relative;
+    vertical-align: bottom;
+    line-height: 0;
+}
+
+.asb-pitch-accent-line::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--asb-pitch-accent-color);
+    pointer-events: none;
+}
+
+.asb-frequency {
+    ruby-position: under;
+}
+
+.asb-frequency rt {
+    font-size: var(--asb-frequency-size);
+    line-height: 1;
+}
+
+.asbplayer-ui-frame {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    visibility: visible !important;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 2147483647 !important;
+    border: 0 !important;
+    pointer-events: auto !important;
+}
+
+.asbplayer-alert {
+    position: fixed !important;
+    bottom: 8px !important;
+    width: 100dvw !important;
+    visibility: visible !important;
+    height: auto !important;
+    z-index: 2147483647 !important;
+    border: 0 !important;
+    pointer-events: auto !important;
+}
+
+.asbplayer-hide {
+    display: none !important;
+}
+
+.asbplayer-drag-zone-initial {
+    position: absolute;
+    pointer-events: none;
+    z-index: 2147483647;
+}
+
+.asbplayer-drag-zone-dragging {
+    pointer-events: all;
+}
+
+.asbplayer-image {
+    position: relative;
+    pointer-events: none;
+}
+
+.asbplayer-image-fade-in {
+    animation-duration: 0.2s;
+    animation-name: asbplayer-fade-in;
+}
+
+@keyframes asbplayer-fade-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.asbplayer-image-container {
+    position: absolute;
+    z-index: 2147483647;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.asbplayer-drag-image {
+    pointer-events: none;
+}
+
+.asbplayer-mouse-over-image {
+    position: absolute;
+    z-index: 2147483647;
+}
+
+.asbplayer-mouse-over-image {
+    background-color: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transition: 0.2s;
+}
+
+.asbplayer-mouse-over-image:hover {
+    opacity: 1;
+}
+
+.asbplayer-offscreen {
+    position: fixed !important;
+    left: 100% !important;
+    top: 100% !important;
+}
+
+.asbplayer-mobile-video-overlay-container-top {
+    position: absolute !important;
+    transform: translate(-50%) !important;
+    display: inline-block !important;
+    z-index: 2147483646 !important;
+    text-align: center !important;
+    pointer-events: auto !important;
+}
+
+.asbplayer-mobile-video-overlay-container-bottom {
+    position: absolute !important;
+    transform: translate(-50%, -100%) !important;
+    display: inline-block !important;
+    z-index: 2147483646 !important;
+    text-align: center !important;
+    pointer-events: auto !important;
+}
+
+.asbplayer-mobile-video-overlay {
+}
+
+.asbplayer-statistics-overlay-container {
+    position: fixed !important;
+    top: 8px !important;
+    bottom: auto !important;
+    transform: translateX(-50%) !important;
+    width: 100vw !important;
+    /* +1 more than mobile overlay */
+    z-index: 2147483647 !important;
+    pointer-events: auto !important;
+}
+
+/* Contains the iframe with class "asbplayer-statistics-overlay-frame " */
+.asbplayer-statistics-overlay-content {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.asbplayer-statistics-overlay-frame {
+    display: block !important;
+    border: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.asbplayer-color-scheme-normal {
+    color-scheme: normal !important;
+}
+
+.asbplayer-color-scheme-light {
+    color-scheme: light !important;
+}
+
+.asbplayer-color-scheme-dark {
+    color-scheme: dark !important;
+}
+
+.asbplayer-color-scheme-light-dark {
+    color-scheme: light dark !important;
+}

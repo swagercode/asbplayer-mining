@@ -1,0 +1,7 @@
+{
+    "common": {
+        "info.toggleSubtitlesShortcut": "Press \"{{keys}}\" to toggle subtitle display"
+    },
+    "extension": {},
+    "external": {}
+}

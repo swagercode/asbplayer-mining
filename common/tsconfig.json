@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+        "outDir": "./dist",
+        "lib": ["DOM", "DOM.Iterable", "ESNext"],
+        "target": "ESNext",
+        "module": "ESNext",
+        "jsx": "react-jsx",
+        "esModuleInterop": true,
+        "strict": true,
+        "downlevelIteration": true,
+        "moduleResolution": "Node"
+    },
+    "include": ["./src/**/*", "decs.d.ts", "vite-env.d.ts", "plausible.d.ts"]
+}

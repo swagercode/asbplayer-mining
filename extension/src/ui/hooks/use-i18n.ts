@@ -1,0 +1,46 @@
+import { asbError } from '@project/common/util';
+import type { ReadCallback } from 'i18next';
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import resourcesToBackend from 'i18next-resources-to-backend';
+import { useEffect, useState } from 'react';
+import { fetchLocalization } from '@project/extension/src/services/localization-fetcher';
+
+let init: Promise<any> = i18n
+    .use(
+        resourcesToBackend((language: string, namespace: string, callback: ReadCallback) =>
+            fetchLocalization(language)
+                .then((localization) => callback(null, localization.strings))
+                .catch((e) => callback(e, null))
+        )
+    )
+    .use(initReactI18next)
+    .init({
+        partialBundledLanguages: true,
+        resources: {},
+        fallbackLng: 'en',
+        debug: import.meta.env.MODE === 'development',
+        ns: 'translation',
+        defaultNS: 'translation',
+        interpolation: {
+            escapeValue: false,
+        },
+    });
+
+export const useI18n = ({ language }: { language: string }) => {
+    const [initialized, setInitialized] = useState<boolean>(false);
+
+    useEffect(() => {
+        if (initialized) {
+            return;
+        }
+
+        void init.then(() => setInitialized(true));
+    }, [initialized]);
+
+    useEffect(() => {
+        init = init.then(() => i18n.changeLanguage(language)).catch((e) => asbError('i18n', e));
+    }, [language]);
+
+    return { initialized };
+};

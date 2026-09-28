@@ -1,0 +1,16 @@
+{
+    "extends": "./.wxt/tsconfig.json",
+    "compilerOptions": {
+        "lib": ["DOM", "DOM.Iterable", "ESNext"],
+        "jsx": "react-jsx",
+        "downlevelIteration": true,
+        "useDefineForClassFields": true,
+        "allowImportingTsExtensions": true,
+        "isolatedModules": true,
+        "moduleDetection": "force",
+        "noUnusedLocals": false,
+        "noUnusedParameters": false,
+        "noFallthroughCasesInSwitch": true,
+        "noUncheckedSideEffectImports": true
+    }
+}
