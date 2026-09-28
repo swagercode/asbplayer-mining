@@ -10,6 +10,14 @@ from pipeline import Pipeline
 
 
 class RankedJevTests(unittest.TestCase):
+    @staticmethod
+    def alternatives(raw, words, surfaces, scores=None):
+        for i, surface in enumerate(surfaces):
+            raw['answers'][f'useful_{i}'] = {'noul': (scores or {}).get(surface, 0)}
+            first = next(index for index, word in enumerate(words) if word['surface'] == surface)
+            raw['answers'][f'word_{i}'] = {'probabilities': {str(first): 1, '-1': 0}}
+        return raw
+
     def setUp(self):
         self.words = [{'term': word, 'surface': word, 'reading': reading} for word, reading in
                       [('ラム', 'らむ'), ('労力', 'ろうりょく'), ('労力', 'ろうりき'), ('成果', 'せいか')]]
@@ -18,6 +26,7 @@ class RankedJevTests(unittest.TestCase):
             'selection': {'probabilities': {'0': .4, '1': .3, '2': .2, '3': .05, '-1': .05}},
             'name_0': {'noul': .99}, 'name_1': {'noul': 0}, 'name_2': {'noul': 0},
             'boundary_0': {'noul': .9}, 'boundary_1': {'noul': .9}, 'boundary_2': {'noul': .9}}}
+        self.alternatives(self.raw, self.words, self.surfaces)
 
     def test_filters_names_and_threshold_and_keeps_highest_scored_reading(self):
         options = options_from('ラムの労力と成果', self.words, self.raw, self.surfaces, .05)
@@ -42,8 +51,10 @@ class RankedJevTests(unittest.TestCase):
         sent = json.loads(request.call_args.args[0].data)
         self.assertEqual(sent['model'], 'jev-1.13.0')
         self.assertEqual(set(sent['questions']), {'selection', 'unparsed', 'name_0', 'name_1', 'name_2',
-                                                'boundary_0', 'boundary_1', 'boundary_2'})
+                                                'boundary_0', 'boundary_1', 'boundary_2',
+                                                'word_0', 'word_1', 'word_2', 'useful_0', 'useful_1', 'useful_2'})
         self.assertIn('-2', sent['questions']['selection']['criteria'])
+        self.assertEqual(set(sent['questions']['word_1']['criteria']), {'1', '2', '-1'})
 
     def test_no_hidden_fallback_when_all_scores_are_low(self):
         self.assertEqual(options_from('', self.words, self.raw, self.surfaces, .9), [])
@@ -55,6 +66,8 @@ class RankedJevTests(unittest.TestCase):
         raw = {'answers': {'selection': {'probabilities': {'0': .1, '1': .4, '2': .5}},
                           'name_0': {'noul': 0}, 'name_1': {'noul': 0},
                           'boundary_0': {'noul': .95}, 'boundary_1': {'noul': .35}}}
+        self.alternatives(raw, words, ['品性', 'いのう'], {'いのう': .99})
+        raw['answers']['word_1']['probabilities'] = {'2': 1, '-1': 0}
         result = options_from('品性にも品がないのう', words, raw, ['品性', 'いのう'], .01)
         self.assertEqual([o['word'] for o in result], ['品性'])
         raw['answers']['boundary_1']['noul'] = .87
@@ -80,12 +93,58 @@ class RankedJevTests(unittest.TestCase):
         self.assertIn('1', payload['questions']['selection']['criteria'])
         raw = {'answers': {'selection': {'probabilities': {'0': .9, '1': .1}},
                           'name_0': {'noul': 0}, 'boundary_0': {'noul': .95}}}
+        self.alternatives(raw, words, surfaces)
+        raw['answers']['word_0']['probabilities'] = {'1': 1, '-1': 0}
         result = options_from(sentence, words, raw, surfaces, .05)
         self.assertEqual([o['reading'] for o in result], ['やから'])
         self.assertTrue(respects_reading_guide('輩（ヤカラ）', words[1]))
         self.assertTrue(respects_reading_guide('輩(ともがら)と輩(やから)', words[0]))
         self.assertTrue(respects_reading_guide('汚(けが)した',
                         {'surface': '汚', 'term': '汚す', 'reading': 'けがす'}))
+
+    def test_strong_alternative_survives_a_dominant_winner_without_adding_every_word(self):
+        words = [{'surface': word, 'term': word, 'reading': reading} for word, reading in
+                 [('栄誉', 'えいよ'), ('賢人', 'けんじん'), ('皆様', 'みなさま')]]
+        surfaces = [word['surface'] for word in words]
+        raw = {'answers': {'selection': {'probabilities': {'0': .03, '1': .96, '2': .01}}}}
+        for i in range(3):
+            raw['answers'][f'name_{i}'] = {'noul': .01}
+            raw['answers'][f'boundary_{i}'] = {'noul': .95}
+        self.alternatives(raw, words, surfaces, {'栄誉': .88, '賢人': .91, '皆様': .2})
+        options = options_from('改めて 栄誉ある 賢人会の皆様に申し上げます', words, raw, surfaces, .05)
+        self.assertEqual([(o['word'], o['confidence']) for o in options], [('賢人', .96), ('栄誉', .88)])
+        # Rounding the runner-up to zero must not hide a useful alternative.
+        raw['answers']['selection']['probabilities']['0'] = 0
+        self.assertEqual(len(options_from('', words, raw, surfaces, .05)), 2)
+        self.assertEqual([o['word'] for o in options_from('', words, raw, surfaces, .05, .9)], ['賢人'])
+
+    def test_independent_alternative_requires_a_confident_contextual_reading(self):
+        self.raw['answers']['selection']['probabilities'] = {'-1': 1}
+        self.raw['answers']['useful_1']['noul'] = .95
+        for scores in ({'1': .55, '-1': .45}, {'1': .2, '-1': .8}, {'1': .5, '2': .5, '-1': 0}):
+            self.raw['answers']['word_1']['probabilities'] = scores
+            self.assertEqual(options_from('', self.words, self.raw, self.surfaces, .05), [])
+        self.raw['answers']['word_1']['probabilities'] = {'1': .9, '2': .1, '-1': 0}
+        options = options_from('', self.words, self.raw, self.surfaces, .05)
+        self.assertEqual([(o['reading'], o['confidence']) for o in options], [('ろうりょく', .9)])
+
+    def test_independent_alternatives_do_not_restore_names_or_weak_boundaries(self):
+        self.raw['answers']['selection']['probabilities'] = {'-1': 1}
+        self.raw['answers']['useful_0']['noul'] = 1
+        self.raw['answers']['useful_1']['noul'] = 1
+        self.raw['answers']['boundary_1']['noul'] = .55
+        self.assertEqual(options_from('ラムの労力', self.words, self.raw, self.surfaces, .05), [])
+
+    def test_independent_scores_reject_malformed_results_and_cross_surface_indices(self):
+        for probabilities in ({'3': 1}, {'1': float('nan')}, {}, []):
+            with self.subTest(probabilities=probabilities):
+                self.raw['answers']['word_1']['probabilities'] = probabilities
+                with self.assertRaises(ValueError):
+                    options_from('', self.words, self.raw, self.surfaces, .05)
+        self.raw['answers']['word_1']['probabilities'] = {'1': 1}
+        self.raw['answers']['useful_1']['noul'] = True
+        with self.assertRaises(ValueError):
+            options_from('', self.words, self.raw, self.surfaces, .05)
 
     def test_openjev_provider_uses_its_own_endpoint_key_and_model_in_one_request(self):
         response = io.BytesIO(json.dumps(self.raw).encode())

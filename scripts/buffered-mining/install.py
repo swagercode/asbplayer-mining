@@ -41,6 +41,7 @@ def install(args):
                   'codex': '/Applications/ChatGPT.app/Contents/Resources/codex'}
     config.setdefault('word_selector', 'jev-ranked')
     config.setdefault('jev_confidence_threshold', .05)
+    config.setdefault('jev_alternative_confidence_threshold', .7)
     if args.enable:
         config['enabled'] = True
     if not all(config.get(name) and Path(config[name]).is_file() for name in ('ffmpeg', 'ffprobe', 'codex')):
