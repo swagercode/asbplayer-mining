@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from jev_ranker import options_from, rank
+from jev_ranker import options_from, rank, should_recover_unparsed, uncovered_kanji_spans
 
 
 class RankedJevTests(unittest.TestCase):
@@ -49,6 +49,36 @@ class RankedJevTests(unittest.TestCase):
             result = rank('未知の複合語', self.words, 'placeholder')
         self.assertEqual(result['unparsedConfidence'], .7)
         self.assertTrue(all(option['index'] >= 0 for option in result['options']))
+
+    def test_low_missing_choice_does_not_amplify_an_uncertain_parser_check(self):
+        self.raw['answers']['selection']['probabilities']['-2'] = .07
+        self.raw['answers']['unparsed'] = {'noul': .45}
+        with patch('jev_ranker.urllib.request.urlopen', return_value=io.BytesIO(json.dumps(self.raw).encode())):
+            result = rank('きっと 平たんな道は歩けないよね あの子…', self.words, 'placeholder')
+        self.assertEqual(result['unparsedConfidence'], .45)
+
+    def test_fallback_requires_strong_evidence_independent_of_display_threshold(self):
+        # An uncertain missing-word choice, even with an actual split, stays on
+        # the dictionary path. A strong binary score also needs a concrete gap.
+        result = {'unparsedConfidence': .45, 'raw': {
+            'answers': {'selection': {'probabilities': {'-2': .07}}}}}
+        self.assertFalse(should_recover_unparsed('死域', [], result))
+        self.assertFalse(should_recover_unparsed('平たんな道', [{'surface': '道'}], result))
+        result['unparsedConfidence'] = .9
+        self.assertFalse(should_recover_unparsed('平たんな道', [{'surface': '道'}], result))
+        result['unparsedConfidence'] = .75
+        self.assertTrue(should_recover_unparsed('死域', [{'surface': '死'}, {'surface': '域'}], result))
+
+    def test_covered_words_and_speaker_labels_are_not_split_compound_evidence(self):
+        self.assertEqual(uncovered_kanji_spans('（大将）死域に踏み込んだ', [
+            {'surface': '死域'}, {'surface': '踏み込んだ'}]), [])
+        self.assertEqual(uncovered_kanji_spans('（大将）死域に踏み込んだ', [
+            {'surface': '死'}, {'surface': '域'}, {'surface': '踏み込んだ'}]), ['死域'])
+
+    def test_strong_explicit_missing_choice_can_cover_non_kanji_vocabulary(self):
+        result = {'unparsedConfidence': .9, 'raw': {
+            'answers': {'selection': {'probabilities': {'-2': .9}}}}}
+        self.assertTrue(should_recover_unparsed('カタカナの未知語', [{'surface': '未知語'}], result))
 
 
 if __name__ == '__main__':

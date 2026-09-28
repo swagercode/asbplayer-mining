@@ -2,11 +2,37 @@
 import json
 import math
 from pathlib import Path
+import re
 import time
 import urllib.error
 import urllib.request
 
 from pipeline import normalized_surface, subtitle_dialogue
+
+# Generating a dictionary entry needs much stronger evidence than displaying an
+# existing candidate. Keep this independent of the user's word-choice cutoff.
+UNPARSED_CONFIDENCE_THRESHOLD = .8
+UNPARSED_COMPOUND_THRESHOLD = .7
+
+
+def uncovered_kanji_spans(sentence, candidates):
+    """Possible split compounds, not proof that a span is a lexical word."""
+    dialogue, speakers = subtitle_dialogue(sentence)
+    return list(dict.fromkeys(span for span in re.findall('[一-龯々]{2,}', dialogue)
+                             if normalized_surface(span) not in speakers
+                             and not any(span in c['surface'] for c in candidates)))
+
+
+def should_recover_unparsed(sentence, candidates, result):
+    # A high-confidence explicit choice can handle any script. The broader
+    # binary question additionally needs concrete evidence of a split compound;
+    # uncertainty about grammar or spelling alone must not trigger generation.
+    answers = (result.get('raw') or {}).get('answers', {})
+    explicit = probability(answers.get('selection', {}).get('probabilities', {}).get('-2', 0))
+    if explicit >= UNPARSED_CONFIDENCE_THRESHOLD:
+        return True
+    confidence = probability(result.get('unparsedConfidence', 0))
+    return confidence >= UNPARSED_COMPOUND_THRESHOLD and bool(uncovered_kanji_spans(sentence, candidates))
 
 
 def payload_for(sentence, candidates):
@@ -104,10 +130,9 @@ def rank(sentence, candidates, key, threshold=.05):
         raise ValueError(f'Jev request failed (HTTP {error.code}). Check its key or usage.') from None
     options = options_from(sentence, candidates, raw, surfaces, threshold)
     missing = probability(raw['answers'].get('unparsed', {}).get('noul', 0))
-    # A binary parser check is independent of the many competing dictionary choices.
-    # Require a majority for it; the explicit selection option retains the usual cutoff.
-    unparsed = max(probability(raw['answers']['selection']['probabilities'].get('-2', 0)),
-                   missing if missing >= .5 else 0)
+    # Preserve both signals for diagnostics; the queue applies a separate,
+    # conservative cutoff before making the additional Luna request.
+    unparsed = max(probability(raw['answers']['selection']['probabilities'].get('-2', 0)), missing)
     return {'options': options, 'seconds': time.perf_counter() - started,
             'model': raw.get('model'), 'raw': raw,
             'unparsedConfidence': unparsed}

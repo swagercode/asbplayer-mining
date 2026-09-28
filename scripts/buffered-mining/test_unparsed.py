@@ -109,9 +109,24 @@ class UnparsedQueueTests(unittest.TestCase):
         self.queue.pipeline.recover_unparsed.assert_called_once()
 
     def test_low_unparsed_score_never_calls_luna(self):
-        self.queue.pipeline.rank.return_value['unparsedConfidence'] = .01
+        for confidence in (.01, .07, .45, .5, .59, .69):
+            with self.subTest(confidence=confidence):
+                # Even a very permissive display cutoff must not lower the
+                # threshold for spending a Luna call and generating definitions.
+                self.queue.config['jev_confidence_threshold'] = .01
+                result = {'options': [{'index': 0, 'word': '死', 'reading': 'し', 'confidence': .12}],
+                          'unparsedConfidence': confidence, 'seconds': .4, 'model': 'jev'}
+                self.queue.change(self.id, rankedResult=result)
+                self.queue.rank(self.id)
+                self.queue.pipeline.recover_unparsed.assert_not_called()
+                self.assertEqual(self.queue.jobs[self.id]['options'], result['options'])
+
+    def test_high_unparsed_score_is_independent_of_dictionary_display_cutoff(self):
+        self.queue.config['jev_confidence_threshold'] = .95
+        self.queue.pipeline.rank.return_value['unparsedConfidence'] = .82
         self.queue.rank(self.id)
-        self.queue.pipeline.recover_unparsed.assert_not_called()
+        self.queue.pipeline.recover_unparsed.assert_called_once()
+        self.assertEqual(self.queue.jobs[self.id]['options'][0]['word'], '死域')
 
     def test_repeated_ranking_reuses_the_proposal_and_replaces_component_choices(self):
         self.queue.pipeline.rank.return_value['options'] = [

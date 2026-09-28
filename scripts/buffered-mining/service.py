@@ -14,6 +14,7 @@ import time
 
 from media import Obs, extract, wall_ranges
 from pipeline import Pipeline
+from jev_ranker import should_recover_unparsed
 
 ROOT = Path(__file__).resolve().parent
 SOCKET = ROOT / 'bridge.sock'
@@ -203,7 +204,7 @@ class Queue:
                     self.change(job_id, dictionaryCandidates=candidates, selectionCandidates=candidates, rankedResult=result)
             options = list(result['options'])
             confidence = result.get('unparsedConfidence', 0)
-            if confidence > 0 and confidence >= self.config.get('jev_confidence_threshold', .05):
+            if should_recover_unparsed(job['subtitle']['text'], candidates, result):
                 with self.lock:
                     if job['state'] in ('cancelled', 'failed'):
                         return
