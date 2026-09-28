@@ -1,3 +1,4 @@
+import { isSentenceExplanationContext } from './sentence-explanation-context';
 import type TabRegistry from '@project/extension/src/services/tab-registry';
 
 const hostName = 'com.asbplayer.mining';
@@ -75,7 +76,15 @@ export function bindBufferedMiningHost(registry: TabRegistry) {
                 (typeof request.sentence !== 'string' || !request.sentence.trim() || request.sentence.length > 5000)
             )
                 return;
-            response = native({ action: request.action, id: request.id, sentence: request.sentence });
+            const context = request.context ?? { before: [], after: [] };
+            response = isSentenceExplanationContext(context)
+                ? native({
+                      action: request.action,
+                      id: request.id,
+                      sentence: request.sentence,
+                      context: { before: context.before, after: context.after },
+                  })
+                : Promise.resolve({ error: 'Invalid surrounding subtitles.' });
         } else if (request.action === 'status' && (ownUi || viewer)) {
             response = native({ action: 'status' });
         } else if (

@@ -1,6 +1,7 @@
 import { defaultSettings } from '@project/common/settings';
 import type { KeyBindSet } from '@project/common/settings';
 import { SentenceExplanationView } from './sentence-explanation';
+import { sentenceExplanationContext } from './sentence-explanation-context';
 import type { SubtitleModel } from '@project/common';
 import { v4 as uuid } from 'uuid';
 import { bindBufferedMiningShortcut } from '@project/extension/src/services/buffered-mining-shortcut';
@@ -123,10 +124,12 @@ export class BufferedMiningController {
         if (this.explanation) return this.closeExplanation();
         const subtitle = this.review?.sentence ?? currentOrPreviousSubtitle(this.subtitles(), this.currentTime());
         if (!subtitle || !this.reviewPlayback) return;
+        const sentence = subtitle.text;
+        const context = sentenceExplanationContext(this.subtitles(), subtitle);
         const id = uuid();
         const resume = !this.video.paused;
         this.reviewPlayback.pause();
-        const view = new SentenceExplanationView(this.video, subtitle.text, this.keys, () => {
+        const view = new SentenceExplanationView(this.video, sentence, this.keys, () => {
             void this.closeExplanation().catch(() => {});
         });
         const explanation = { id, view, resume, timer: undefined as ReturnType<typeof setTimeout> | undefined };
@@ -134,7 +137,7 @@ export class BufferedMiningController {
         const poll = async (action: string) => {
             const result = await this.send(action, {
                 id,
-                ...(action === 'explain' ? { sentence: subtitle.text } : {}),
+                ...(action === 'explain' ? { sentence, context } : {}),
             }).catch(() => ({ error: 'The sentence explanation bridge is unavailable.' }));
             if (this.explanation !== explanation) return;
             if (result.error) view.show(result.error);

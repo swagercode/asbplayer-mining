@@ -10,6 +10,8 @@ describe('sentence explanation shortcut', () => {
     let playback: { pause: jest.Mock; play: jest.Mock; seek: jest.Mock };
     let originalBrowser: unknown;
     let root: HTMLElement;
+    let subtitles: (typeof cue)[];
+    let media: number;
     const flush = async () => {
         await Promise.resolve();
         await Promise.resolve();
@@ -33,10 +35,12 @@ describe('sentence explanation shortcut', () => {
         Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => root });
         Object.defineProperty(video, 'paused', { configurable: true, get: () => false });
         playback = { pause: jest.fn(), play: jest.fn().mockResolvedValue(undefined), seek: jest.fn() };
+        subtitles = [cue];
+        media = 2500;
         controller = new BufferedMiningController(
             video,
-            () => [cue],
-            () => 2500,
+            () => subtitles,
+            () => media,
             () => 'episode',
             playback
         );
@@ -113,5 +117,43 @@ describe('sentence explanation shortcut', () => {
         video.dispatchEvent(new Event('seeking'));
         expect(root.querySelector('[role="dialog"]')).toBeNull();
         expect(playback.play).not.toHaveBeenCalled();
+    });
+    it('sends a frozen before/after context once, alongside the last cue during a gap', async () => {
+        const previous = { ...cue, text: '前の話', start: 0, end: 900 };
+        const next = { ...cue, text: '続く話', start: 3000, end: 4000 };
+        subtitles = [next, cue, previous];
+        send.mockResolvedValueOnce({ pending: true }).mockResolvedValueOnce({ text: '説明' });
+        press('f');
+        await flush();
+        expect(send.mock.calls[0][0]).toEqual(
+            expect.objectContaining({
+                action: 'explain',
+                sentence: cue.text,
+                context: { before: ['前の話'], after: ['続く話'] },
+            })
+        );
+        next.text = '変更後';
+        expect(send.mock.calls[0][0].context.after).toEqual(['続く話']);
+        jest.advanceTimersByTime(300);
+        await flush();
+        expect(send.mock.calls[1][0]).toEqual(expect.objectContaining({ action: 'explanation-status' }));
+        expect(send.mock.calls[1][0].context).toBeUndefined();
+    });
+
+    it('centers context on the frozen mining sentence, even when playback has moved to another cue', async () => {
+        subtitles = [cue, { ...cue, text: '次の文', start: 3000, end: 4000 }];
+        send.mockImplementation(async ({ action }) => (action === 'job-status' ? { options: [] } : { text: '説明' }));
+        await controller.mine();
+        await flush();
+        media = 3500;
+        send.mockClear();
+        press('f');
+        await flush();
+        expect(send.mock.calls[0][0]).toEqual(
+            expect.objectContaining({
+                sentence: cue.text,
+                context: { before: [], after: ['次の文'] },
+            })
+        );
     });
 });
