@@ -211,6 +211,39 @@ describe('mining definition review', () => {
         expect(cancel).toHaveBeenCalledTimes(2);
         expect(status).not.toHaveBeenCalled();
     });
+    it('opens the generated definition immediately and keeps V/N confirmation separate', async () => {
+        review.dispose();
+        media = 3500;
+        const option = {
+            index: 9,
+            word: '死域',
+            reading: 'しいき',
+            confidence: 0.82,
+            definition: '死の危険が及ぶ領域。',
+        };
+        status.mockResolvedValue({ options: [option] });
+        const choose = jest.fn().mockReturnValue(new Promise(() => {}));
+        const confirm = jest.fn();
+        review = new BufferedMiningReview(
+            'job',
+            subtitle,
+            video,
+            () => media,
+            () => source,
+            playback,
+            status,
+            view,
+            choose,
+            jest.fn().mockResolvedValue({}),
+            confirm
+        );
+        await review.queued({});
+        expect(view.showWord).toHaveBeenCalledWith(option.word, option.reading, option.definition);
+        expect(view.showChoices).not.toHaveBeenCalled();
+        expect(choose).toHaveBeenCalledWith(9);
+        expect(confirm).not.toHaveBeenCalled();
+    });
+
     it('B dismisses a chosen definition without a card, seek, or late popup', async () => {
         review.dispose();
         const option = { index: 0, word: '労力', reading: 'ろうりょく', confidence: 0.8 };

@@ -2,6 +2,31 @@ import { YomitanMiningReview } from './buffered-mining-review';
 import { bindPriorityNavigationKeys } from '@project/common/key-binder/single-key-shortcut';
 
 describe('fullscreen numbered mining choices', () => {
+    it('shows a generated definition as text inside fullscreen without scanning a dictionary fragment', () => {
+        const root = document.createElement('div');
+        const video = document.createElement('video');
+        root.append(video);
+        document.body.append(root);
+        Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => root });
+        const scan = jest.spyOn(window, 'requestAnimationFrame');
+        const view = new YomitanMiningReview(video);
+        try {
+            view.showWord('死域', 'しいき', '死の危険が及ぶ領域。\n<img src=x onerror=alert(1)>');
+            const panel = root.querySelector('[data-asbplayer-mining-word]')!;
+            expect(panel.textContent).toContain('死域');
+            expect(panel.textContent).toContain('しいき');
+            expect(panel.textContent).toContain('Luna');
+            expect(panel.textContent).toContain('<img src=x onerror=alert(1)>');
+            expect(panel.querySelector('img')).toBeNull();
+            expect(scan).not.toHaveBeenCalled();
+        } finally {
+            view.close();
+            scan.mockRestore();
+            delete (document as any).fullscreenElement;
+            root.remove();
+        }
+    });
+
     it('shows only numbers and words, outranks earlier site handlers, and swallows the whole chosen key press', () => {
         const root = document.createElement('div');
         const video = document.createElement('video');

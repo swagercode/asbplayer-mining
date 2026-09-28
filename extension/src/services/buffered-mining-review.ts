@@ -1,7 +1,13 @@
 import type { SubtitleModel } from '@project/common';
 import { bindSingleKeyShortcut } from '@project/common/key-binder/single-key-shortcut';
 
-export type MiningWordOption = { index: number; word: string; reading: string; confidence: number };
+export type MiningWordOption = {
+    index: number;
+    word: string;
+    reading: string;
+    confidence: number;
+    definition?: string;
+};
 export type MiningCardType = 'normal' | 'audio';
 
 export type MiningReviewPlayback = {
@@ -15,12 +21,13 @@ export type MiningReviewStatus = {
     error?: string;
     word?: string;
     reading?: string;
+    definition?: string;
     options?: MiningWordOption[];
 };
 
 export interface MiningReviewView {
     message(text: string): void;
-    showWord(word: string, reading?: string): void;
+    showWord(word: string, reading?: string, definition?: string): void;
     showChoices(options: MiningWordOption[], choose: (option: MiningWordOption) => void): void;
     close(): void;
 }
@@ -31,6 +38,7 @@ export class YomitanMiningReview implements MiningReviewView {
     private readonly panel = document.createElement('div');
     private readonly word = document.createElement('span');
     private readonly status = document.createElement('div');
+    private readonly definition = document.createElement('div');
     private readonly choices = document.createElement('div');
     private unbindChoices: (() => void)[] = [];
     private focusTimer?: ReturnType<typeof setTimeout>;
@@ -49,7 +57,9 @@ export class YomitanMiningReview implements MiningReviewView {
             'font:16px/1.5 sans-serif;box-shadow:0 2px 12px #0008;outline:none;';
         this.word.style.cssText = 'display:block;font:32px/1.4 sans-serif;color:inherit;white-space:pre;';
         this.status.style.cssText = 'font:14px/1.5 sans-serif;color:#ddd;';
-        this.panel.append(this.word, this.status, this.choices);
+        this.definition.style.cssText =
+            'font:20px/1.6 sans-serif;color:#fff;white-space:pre-wrap;max-width:650px;max-height:45vh;overflow:auto;';
+        this.panel.append(this.word, this.status, this.definition, this.choices);
         this.mount();
         document.addEventListener('fullscreenchange', this.mount);
         window.addEventListener('blur', this.returnKeyboardFocus);
@@ -102,6 +112,7 @@ export class YomitanMiningReview implements MiningReviewView {
 
     message(text: string) {
         this.clearChoices();
+        this.definition.textContent = '';
         this.status.textContent = `${text} · V audio · N normal · B skip`;
     }
 
@@ -159,7 +170,7 @@ export class YomitanMiningReview implements MiningReviewView {
         this.panel.focus({ preventScroll: true });
     }
 
-    showWord(word: string, reading?: string) {
+    showWord(word: string, reading?: string, definition?: string) {
         this.panel.dataset.asbplayerMiningWord = '';
         this.clearChoices();
         this.panel.style.left = '25%';
@@ -169,7 +180,11 @@ export class YomitanMiningReview implements MiningReviewView {
         this.showingWord = true;
         this.word.textContent = word;
         this.status.textContent = `${reading || ''}${reading ? ' · ' : ''}V audio · N normal · B skip`;
+        this.definition.textContent = definition ? `Luna\n${definition}` : '';
         this.panel.focus({ preventScroll: true });
+        // No dictionary entry exists for generated vocabulary. Show its definition
+        // directly in the fullscreen review instead of opening a misleading fragment.
+        if (definition) return;
         this.scanFrame = requestAnimationFrame(() => {
             if (this.closed || !this.word.firstChild) return;
             if (YomitanMiningReview.latestScan?.closed) YomitanMiningReview.latestScan.stopFocusListener();
@@ -291,7 +306,8 @@ export class BufferedMiningReview {
             this.pauseAfterSentence();
             if (result.word) {
                 this.chosen = true;
-                this.view.showWord(result.word, result.reading);
+                if (result.definition) this.view.showWord(result.word, result.reading, result.definition);
+                else this.view.showWord(result.word, result.reading);
                 return;
             }
             if (result.error || result.state === 'failed') {
@@ -317,7 +333,8 @@ export class BufferedMiningReview {
         this.chosen = true;
         clearTimeout(this.timer);
         // Local display does not wait for a network round trip, OBS or Anki.
-        this.view.showWord(option.word, option.reading);
+        if (option.definition) this.view.showWord(option.word, option.reading, option.definition);
+        else this.view.showWord(option.word, option.reading);
         try {
             this.selection = this.choose(option.index);
             const result = await this.selection;

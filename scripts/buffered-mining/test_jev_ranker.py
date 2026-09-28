@@ -37,10 +37,18 @@ class RankedJevTests(unittest.TestCase):
         self.assertEqual(result['options'][0]['confidence'], .3)
         sent = json.loads(request.call_args.args[0].data)
         self.assertEqual(sent['model'], 'jev-1.13.0')
-        self.assertEqual(set(sent['questions']), {'selection', 'name_0', 'name_1', 'name_2'})
+        self.assertEqual(set(sent['questions']), {'selection', 'unparsed', 'name_0', 'name_1', 'name_2'})
+        self.assertIn('-2', sent['questions']['selection']['criteria'])
 
     def test_no_hidden_fallback_when_all_scores_are_low(self):
         self.assertEqual(options_from('', self.words, self.raw, self.surfaces, .9), [])
+
+    def test_not_parsed_is_a_separate_result_not_a_negative_dictionary_index(self):
+        self.raw['answers']['selection']['probabilities']['-2'] = .7
+        with patch('jev_ranker.urllib.request.urlopen', return_value=io.BytesIO(json.dumps(self.raw).encode())):
+            result = rank('未知の複合語', self.words, 'placeholder')
+        self.assertEqual(result['unparsedConfidence'], .7)
+        self.assertTrue(all(option['index'] >= 0 for option in result['options']))
 
 
 if __name__ == '__main__':

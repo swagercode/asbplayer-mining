@@ -65,6 +65,7 @@ class Queue:
         self.jobs = {}
         self.history = {}
         self.lock = threading.RLock()
+        self.active_rankings = set()
         self.capture = ThreadPoolExecutor(max_workers=1, thread_name_prefix='obs-capture')
         self.processing = ThreadPoolExecutor(max_workers=2, thread_name_prefix='card-mining')
         self.ranking = ThreadPoolExecutor(max_workers=2, thread_name_prefix='jev-ranking')
@@ -184,18 +185,55 @@ class Queue:
 
     def rank(self, job_id):
         job = self.jobs[job_id]
+        with self.lock:
+            if job_id in self.active_rankings or job['state'] in ('cancelled', 'failed'):
+                return
+            self.active_rankings.add(job_id)
         try:
-            candidates = job.get('selectionCandidates') or self.pipeline.candidates(job['subtitle']['text'])
-            result = self.pipeline.rank(job['subtitle']['text'], candidates)
+            candidates = job.get('dictionaryCandidates', job.get('selectionCandidates'))
+            if candidates is None:
+                candidates = self.pipeline.candidates(job['subtitle']['text'], allow_empty=True)
+            result = job.get('rankedResult')
+            if result is None:
+                result = self.pipeline.rank(job['subtitle']['text'], candidates)
+                with self.lock:
+                    if job['state'] in ('cancelled', 'failed'):
+                        return
+                    # Retry a failed fallback without spending another Jev request.
+                    self.change(job_id, dictionaryCandidates=candidates, selectionCandidates=candidates, rankedResult=result)
+            options = list(result['options'])
+            confidence = result.get('unparsedConfidence', 0)
+            if confidence > 0 and confidence >= self.config.get('jev_confidence_threshold', .05):
+                with self.lock:
+                    if job['state'] in ('cancelled', 'failed'):
+                        return
+                if 'recoveredVocabulary' not in job:
+                    recovered = self.pipeline.recover_unparsed(job['subtitle']['text'], candidates)
+                    with self.lock:
+                        if job['state'] in ('cancelled', 'failed'):
+                            return
+                        self.change(job_id, recoveredVocabulary=recovered)
+                recovered = job['recoveredVocabulary']
+                if recovered:
+                    # A recovered whole word replaces its misleading fragments.
+                    options = [option for option in options if not (
+                        candidates[option['index']]['surface'] != recovered['surface']
+                        and candidates[option['index']]['surface'] in recovered['surface'])]
+                    options.append({'index': len(candidates), 'word': recovered['term'],
+                                    'reading': recovered['reading'], 'confidence': confidence,
+                                    'definition': recovered['definition'] + '\n' + recovered['definitionEnglish']})
+                    candidates = [*candidates, recovered]
+                    options.sort(key=lambda option: (-option['confidence'], option['index']))
+                    options = options[:9]
             with self.lock:
                 if job['state'] in ('cancelled', 'failed'):
                     return
-                self.change(job_id, selectionCandidates=candidates, options=result['options'],
+                self.change(job_id, selectionCandidates=candidates, options=options,
                             rankingSeconds=result['seconds'], rankingModel=result['model'],
-                            rankingResult=result.get('raw'), selectionError='' if result['options'] else
+                            rankingResult=result.get('raw'), selectionError='' if options else
                             'No word meets the confidence threshold. Press N to resume.')
                 if job['hasMedia']:
-                    self.change(job_id, state='awaiting choice' if result['options'] else 'failed',
+                    self.change(job_id, state='awaiting choice' if options else 'failed',
                                 error=job.get('selectionError', ''))
         except Exception as error:
             with self.lock:
@@ -203,6 +241,16 @@ class Queue:
                     self.change(job_id, selectionError=str(error))
                     if job['hasMedia']:
                         self.change(job_id, state='failed', error=str(error))
+        finally:
+            with self.lock:
+                self.active_rankings.discard(job_id)
+
+    @staticmethod
+    def selected_word(word):
+        result = {'word': word['term'], 'reading': word['reading']}
+        if word.get('generatedBy'):
+            result['definition'] = word['definition'] + '\n' + word['definitionEnglish']
+        return result
 
     def choose(self, job_id, index):
         with self.lock:
@@ -214,12 +262,12 @@ class Queue:
             if job.get('selection'):
                 if job.get('chosenIndex') != index:
                     raise ValueError('A word has already been chosen for this sentence.')
-                return {'word': job['selection']['term'], 'reading': job['selection']['reading']}
+                return self.selected_word(job['selection'])
             word = job['selectionCandidates'][index]
             self.change(job_id, selection=word, chosenIndex=index, word=word['term'])
             if job['hasMedia']:
                 self.processing.submit(self.process, job_id)
-            return {'word': word['term'], 'reading': word['reading']}
+            return self.selected_word(word)
 
     def confirm_choice(self, job_id, card_type='normal'):
         if card_type not in ('normal', 'audio'):
@@ -376,6 +424,8 @@ class Queue:
                 selection = job.get('selection') or {}
                 result = {key: job.get(key) for key in ('id', 'state', 'error', 'hasMedia')} | {
                     'word': selection.get('term'), 'reading': selection.get('reading')}
+                if selection:
+                    result.update(self.selected_word(selection))
                 if job.get('requiresChoice'):
                     result.update(options=job.get('options', []), error=job.get('error') or job.get('selectionError', ''))
                 return result

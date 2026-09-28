@@ -23,7 +23,7 @@ def install(args):
     root = support / 'asbplayer-extension/buffered-mining'
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     root.chmod(0o700)
-    for name in ('host.py', 'service.py', 'pipeline.py', 'jev_ranker.py', 'media.py', 'word-instructions.txt'):
+    for name in ('host.py', 'service.py', 'pipeline.py', 'jev_ranker.py', 'luna_fallback.py', 'media.py', 'word-instructions.txt'):
         subtitle_installer.write_if_changed(root / name, (SOURCE / name).read_bytes())
     config_path = root / 'config.json'
     if config_path.exists():
