@@ -152,7 +152,8 @@ class Pipeline:
     def rank(self, sentence, candidates):
         from jev_ranker import rank
         return rank(sentence, candidates, self.config.get('jev_api_key'),
-                    self.config.get('jev_confidence_threshold', .05))
+                    self.config.get('jev_confidence_threshold', .05),
+                    provider=self.config.get('jev_provider', 'typesafe'))
 
     def recover_unparsed(self, sentence, candidates):
         from luna_fallback import generate

@@ -1,9 +1,11 @@
 import io
 import json
 import unittest
+import urllib.error
 from unittest.mock import patch
 
-from jev_ranker import options_from, rank, should_recover_unparsed, uncovered_kanji_spans
+from jev_ranker import options_from, payload_for, rank, should_recover_unparsed, uncovered_kanji_spans
+from pipeline import Pipeline
 
 
 class RankedJevTests(unittest.TestCase):
@@ -42,6 +44,39 @@ class RankedJevTests(unittest.TestCase):
 
     def test_no_hidden_fallback_when_all_scores_are_low(self):
         self.assertEqual(options_from('', self.words, self.raw, self.surfaces, .9), [])
+
+    def test_openjev_provider_uses_its_own_endpoint_key_and_model_in_one_request(self):
+        response = io.BytesIO(json.dumps(self.raw).encode())
+        with patch('jev_ranker.urllib.request.urlopen', return_value=response) as request:
+            pipeline = Pipeline({'jev_provider': 'openjev', 'jev_api_key': 'oj_test_placeholder'})
+            result = pipeline.rank('ラムの労力と成果', self.words)
+        request.assert_called_once()
+        sent = request.call_args.args[0]
+        self.assertEqual(sent.full_url, 'https://api.openjev.sh/v1/systemone')
+        self.assertEqual(sent.get_header('Authorization'), 'Bearer oj_test_placeholder')
+        self.assertEqual(json.loads(sent.data)['model'], 'openjev')
+        self.assertEqual(result['options'][0]['word'], '労力')
+
+    def test_wrong_provider_cannot_send_openjev_credentials_to_typesafe(self):
+        with patch('jev_ranker.urllib.request.urlopen') as request:
+            for provider in ('typesafe', 'unknown'):
+                with self.subTest(provider=provider), self.assertRaises(ValueError):
+                    rank('', self.words, 'oj_test_placeholder', provider=provider)
+            request.assert_not_called()
+
+    def test_openjev_failure_never_falls_back_to_paid_provider(self):
+        error = urllib.error.HTTPError('https://api.openjev.sh/v1/systemone', 429, 'Limited', {}, None)
+        with patch('jev_ranker.urllib.request.urlopen', side_effect=error) as request:
+            with self.assertRaisesRegex(ValueError, 'openjev.*429'):
+                rank('', self.words, 'oj_test_placeholder', provider='openjev')
+        request.assert_called_once()
+
+    def test_openjev_choice_limit_includes_reserved_outcomes(self):
+        words = [{'surface': '語', 'term': '語', 'reading': 'ご'}] * 253
+        payload, _ = payload_for('語', words, model='openjev')
+        self.assertEqual(len(payload['questions']['selection']['criteria']), 255)
+        with self.assertRaises(ValueError):
+            payload_for('語', [*words, words[0]], model='openjev')
 
     def test_not_parsed_is_a_separate_result_not_a_negative_dictionary_index(self):
         self.raw['answers']['selection']['probabilities']['-2'] = .7
