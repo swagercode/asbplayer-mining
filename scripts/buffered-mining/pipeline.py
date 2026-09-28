@@ -194,19 +194,20 @@ class Pipeline:
         position = sentence.find(word['surface'])
         if position < 0:
             raise ValueError('The chosen word is not in the frozen subtitle.')
+        screenshot = '<img src="asb_' + job['id'] + '.jpg">' if job.get('hasScreenshot') else ''
         values.update({'sentence': html.escape(sentence), 'cloze-prefix': html.escape(sentence[:position]),
                        'cloze-body': html.escape(word['surface']),
                        'cloze-suffix': html.escape(sentence[position + len(word['surface']):]),
                        'document-title': html.escape(job.get('title', '')), 'url': html.escape(job.get('url', '')),
-                       'popup-selection-text': '', 'clipboard-text': '', 'clipboard-image': '', 'screenshot': ''})
+                       'popup-selection-text': '', 'clipboard-text': '', 'clipboard-image': '', 'screenshot': screenshot})
         fields = {name: re.sub(r'\{([^{}]+)\}', lambda m: values.get(m[1], ''), spec['value'])
                   for name, spec in card_format['fields'].items()}
-        # Context and OBS media are supplied independently of dictionary word audio.
+        # Chrome supplies the still image; OBS supplies only sentence audio.
         fields[self.config['sentence_field']] = (
             values['cloze-prefix'] + '<b>' + values['cloze-body'] + '</b>' + values['cloze-suffix'])
         fields[self.config['audio_field']] = '[sound:asb_' + job['id'] + '.mp3]'
         if self.config.get('image_field'):
-            fields[self.config['image_field']] = ''
+            fields[self.config['image_field']] = screenshot
         if self.config.get('source_field'):
             fields[self.config['source_field']] = html.escape(job.get('title', ''))
         if generated:
@@ -243,4 +244,8 @@ class Pipeline:
             path = Path(job['directory']) / ('sentence.' + extension)
             self.anki('storeMediaFile', filename='asb_' + job['id'] + '.' + extension,
                       data=base64.b64encode(path.read_bytes()).decode())
+        if job.get('hasScreenshot'):
+            image = Path(job['directory']) / 'screenshot.jpg'
+            self.anki('storeMediaFile', filename='asb_' + job['id'] + '.jpg',
+                      data=base64.b64encode(image.read_bytes()).decode())
         return self.anki('addNote', note=note)

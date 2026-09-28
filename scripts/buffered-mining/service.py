@@ -1,5 +1,7 @@
 """Persistent local queue. Capture, Jev ranking and Anki export run independently."""
 from collections import deque
+import base64
+import binascii
 from concurrent.futures import ThreadPoolExecutor
 import fcntl
 import json
@@ -19,7 +21,7 @@ from jev_ranker import should_recover_unparsed
 
 ROOT = Path(__file__).resolve().parent
 SOCKET = ROOT / 'bridge.sock'
-MAX_MESSAGE = 256 * 1024
+MAX_MESSAGE = 2 * 1024 * 1024
 
 
 def atomic_json(path, value):
@@ -272,7 +274,7 @@ class Queue:
                 self.processing.submit(self.process, job_id)
             return self.selected_word(word)
 
-    def confirm_choice(self, job_id, card_type='normal'):
+    def confirm_choice(self, job_id, card_type='normal', screenshot=None):
         if card_type not in ('normal', 'audio'):
             raise ValueError('Choose a normal or audio card.')
         with self.lock:
@@ -283,6 +285,20 @@ class Queue:
             # The first acceptance is final, including retries racing with export.
             if job.get('confirmed'):
                 return {'confirmed': True, 'cardType': job.get('cardType', 'normal')}
+            if screenshot is not None:
+                try:
+                    if not isinstance(screenshot, str) or not 1 <= len(screenshot) <= 2_000_000:
+                        raise ValueError('Invalid screenshot size.')
+                    image = base64.b64decode(screenshot, validate=True)
+                    if not image.startswith(b'\xff\xd8\xff') or not image.endswith(b'\xff\xd9'):
+                        raise ValueError('The screenshot is not a JPEG.')
+                    path = Path(job['directory']) / 'screenshot.jpg'
+                    path.write_bytes(image)
+                    path.chmod(0o600)
+                    job['hasScreenshot'] = True
+                except (ValueError, binascii.Error, OSError) as error:
+                    # A missing picture must never discard a captured audio card.
+                    job['screenshotError'] = str(error)
             self.change(job_id, confirmed=True, cardType=card_type)
             if job['hasMedia']:
                 self.processing.submit(self.process, job_id)
@@ -416,7 +432,7 @@ class Queue:
                 raise ValueError('Invalid mining job ID.')
             if action == 'choose':
                 return self.choose(job_id, request.get('index'))
-            return (self.confirm_choice(job_id, request.get('cardType', 'normal'))
+            return (self.confirm_choice(job_id, request.get('cardType', 'normal'), request.get('screenshot'))
                     if action == 'confirm-choice' else self.cancel_choice(job_id))
         with self.lock:
             if action == 'job-status':
@@ -429,6 +445,7 @@ class Queue:
                 selection = job.get('selection') or {}
                 result = {key: job.get(key) for key in ('id', 'state', 'error', 'hasMedia')} | {
                     'word': selection.get('term'), 'reading': selection.get('reading')}
+                result.update({key: job[key] for key in ('hasScreenshot', 'screenshotError') if key in job})
                 if selection:
                     result.update(self.selected_word(selection))
                 if job.get('requiresChoice'):

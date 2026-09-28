@@ -10,7 +10,7 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parent
-MAX_MESSAGE = 256 * 1024
+MAX_MESSAGE = 2 * 1024 * 1024
 
 
 def request(message):

@@ -1,6 +1,7 @@
 import { bindBufferedMiningHost } from './buffered-mining-host';
+import * as screenshots from './buffered-mining-screenshot';
 
-describe('sentence explanation context routing', () => {
+describe('buffered mining host routing', () => {
     const originalBrowser = (globalThis as any).browser;
     const sender = { id: 'asbplayer', tab: { id: 1 }, url: 'https://www.crunchyroll.com/watch/episode' };
     let receive: (request: any, sender: any, respond: jest.Mock) => unknown;
@@ -33,6 +34,7 @@ describe('sentence explanation context routing', () => {
         bindBufferedMiningHost({} as any);
     });
     afterEach(() => {
+        jest.restoreAllMocks();
         (globalThis as any).browser = originalBrowser;
     });
     const request = (context?: unknown) => ({
@@ -65,5 +67,42 @@ describe('sentence explanation context routing', () => {
         await Promise.resolve();
         expect(postMessage).not.toHaveBeenCalled();
         expect(respond).toHaveBeenCalledWith({ error: 'Invalid surrounding subtitles.' });
+    });
+    it('captures only the sending episode tab and does not send pixels to the native host before acceptance', async () => {
+        const capture = jest.spyOn(screenshots, 'captureMiningScreenshot').mockResolvedValue('jpeg');
+        receive(
+            {
+                sender: 'asbplayer-buffered-mining',
+                action: 'capture-screenshot',
+                tabId: 999,
+                src: 'video',
+                params: { rect: {} },
+            },
+            sender,
+            respond
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(capture).toHaveBeenCalledWith(1, 'video', { rect: {} });
+        expect(respond).toHaveBeenCalledWith({ screenshot: 'jpeg' });
+        expect(postMessage).not.toHaveBeenCalled();
+    });
+    it('forwards a bounded image only with card acceptance', async () => {
+        const command = {
+            sender: 'asbplayer-buffered-mining',
+            action: 'confirm-choice',
+            id: 'a'.repeat(36),
+            cardType: 'normal',
+            screenshot: 'jpeg',
+        };
+        receive(command, sender, respond);
+        await Promise.resolve();
+        expect(postMessage.mock.calls[0][0].screenshot).toBe('jpeg');
+        receive({ ...command, action: 'choose', index: 0 }, sender, respond);
+        await Promise.resolve();
+        expect(postMessage.mock.calls[1][0]).not.toHaveProperty('screenshot');
+        receive({ ...command, screenshot: 'a'.repeat(2_000_001) }, sender, respond);
+        await Promise.resolve();
+        expect(postMessage.mock.calls[2][0]).not.toHaveProperty('screenshot');
     });
 });

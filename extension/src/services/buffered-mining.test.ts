@@ -12,6 +12,54 @@ const cue = (text: string, start: number, end: number): SubtitleModel => ({
 });
 
 describe('buffered mining button', () => {
+    it('shows the word and resumes playback without waiting for Chrome, then attaches the frozen image on acceptance', async () => {
+        const originalBrowser = (globalThis as any).browser;
+        const sendMessage = jest.fn(async ({ action }) =>
+            action === 'job-status' ? { word: '労力', reading: 'ろうりょく' } : { queued: true }
+        );
+        (globalThis as any).browser = { runtime: { sendMessage } };
+        const showWord = jest.spyOn(YomitanMiningReview.prototype, 'showWord').mockImplementation(() => {});
+        let finish: (image: string) => void = () => {};
+        const capture = jest.fn(
+            () =>
+                new Promise<string>((resolve) => {
+                    finish = resolve;
+                })
+        );
+        const video = document.createElement('video');
+        const playback = {
+            pause: jest.fn(),
+            seek: jest.fn().mockResolvedValue(undefined),
+            play: jest.fn().mockResolvedValue(undefined),
+        };
+        const controller = new BufferedMiningController(
+            video,
+            () => [cue('労力', 1000, 3000)],
+            () => 3500,
+            () => 'episode',
+            playback,
+            capture
+        );
+        try {
+            await controller.mine();
+            await Promise.resolve();
+            expect(showWord).toHaveBeenCalledWith('労力', 'ろうりょく');
+            expect(capture).toHaveBeenCalledTimes(1);
+            await controller.mine();
+            expect(playback.play).toHaveBeenCalledTimes(1);
+            expect(sendMessage.mock.calls.some(([m]) => m.action === 'confirm-choice')).toBe(false);
+            finish('frozen-chrome-image');
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            expect(sendMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ action: 'confirm-choice', screenshot: 'frozen-chrome-image' })
+            );
+        } finally {
+            controller.unbind();
+            showWord.mockRestore();
+            (globalThis as any).browser = originalBrowser;
+        }
+    });
+
     it.each([
         ['v', 'v', 'audio'],
         ['v', 'n', 'normal'],

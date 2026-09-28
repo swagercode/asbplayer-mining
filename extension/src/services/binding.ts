@@ -74,6 +74,7 @@ import {
 } from '@project/common';
 import { adjacentSubtitle } from '@project/common/key-binder';
 import { BufferedMiningController } from '@/services/buffered-mining';
+import { cleanMiningScreenshot } from '@/services/buffered-mining-screenshot';
 import type { SeekableTracks } from '@project/common/settings';
 import {
     calculateSeekableTracksValue,
@@ -670,7 +671,20 @@ export default class Binding {
             () => this.subtitleController.subtitles.filter((s) => s.track === undefined || s.track === 0),
             () => this.currentTimeMs,
             () => this._registeredVideoSrc + location.href,
-            { pause: () => this.pause(), seek: (time) => this.seek(time), play: () => this.play() }
+            { pause: () => this.pause(), seek: (time) => this.seek(time), play: () => this.play() },
+            async () => {
+                if (!this.takeScreenshot) return;
+                const params = this._imageCaptureParams;
+                return cleanMiningScreenshot(async () => {
+                    const result = await browser.runtime.sendMessage({
+                        sender: 'asbplayer-buffered-mining',
+                        action: 'capture-screenshot',
+                        src: this._registeredVideoSrc,
+                        params,
+                    });
+                    return result?.screenshot;
+                });
+            }
         );
         this.bufferedMining.bind();
 

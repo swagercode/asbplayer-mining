@@ -62,7 +62,8 @@ export class BufferedMiningController {
         private readonly subtitles: () => readonly SubtitleModel[],
         private readonly currentTime: () => number,
         private readonly source: () => string,
-        private readonly reviewPlayback?: MiningReviewPlayback
+        private readonly reviewPlayback?: MiningReviewPlayback,
+        private readonly captureScreenshot?: () => Promise<string | undefined>
     ) {}
 
     private send = (action: string, data: object = {}) =>
@@ -232,6 +233,12 @@ export class BufferedMiningController {
         if (!subtitle) return { error: 'No current or previous subtitle is available.' };
         const sample = this.sample();
         const id = uuid();
+        const source = this.source();
+        const captureEpoch = this.epoch;
+        // Each mining cycle owns its image, independently of ranking and audio.
+        const screenshot = this.captureScreenshot?.()
+            .then((image) => (this.source() === source && this.epoch === captureEpoch ? image : undefined))
+            .catch(() => undefined);
         const review = this.reviewPlayback
             ? new BufferedMiningReview(
                   id,
@@ -244,7 +251,10 @@ export class BufferedMiningController {
                   new YomitanMiningReview(this.video, this.keys),
                   (index) => this.send('choose', { id, index }),
                   () => this.send('cancel-choice', { id }),
-                  (cardType) => this.send('confirm-choice', { id, cardType })
+                  async (cardType) => {
+                      const image = await screenshot;
+                      return this.send('confirm-choice', { id, cardType, ...(image ? { screenshot: image } : {}) });
+                  }
               )
             : undefined;
         this.review = review;

@@ -1,3 +1,4 @@
+import base64
 import json
 from pathlib import Path
 import tempfile
@@ -228,6 +229,34 @@ class QueueTests(unittest.TestCase):
         self.assertFalse(self.queue.jobs[job_id].get('confirmed'))
         self.queue.pipeline.export.assert_not_called()
 
+    def test_chrome_screenshot_is_saved_only_for_its_confirmed_card(self):
+        job_id = self.ranked_job(review=True)
+        self.queue.rank(job_id)
+        self.queue.choose(job_id, 0)
+        image = b'\xff\xd8\xff' + b'chrome screenshot fixture' + b'\xff\xd9'
+        self.queue.handle({'action': 'confirm-choice', 'id': job_id, 'cardType': 'audio',
+                           'screenshot': base64.b64encode(image).decode()})
+        job = self.queue.jobs[job_id]
+        path = Path(job['directory'])/'screenshot.jpg'
+        self.assertEqual(path.read_bytes(), image)
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertTrue(json.loads((Path(job['directory'])/'job.json').read_text())['hasScreenshot'])
+        self.queue.confirm_choice(job_id, 'normal', base64.b64encode(b'replacement').decode())
+        self.assertEqual(path.read_bytes(), image)
+        self.assertEqual(job['cardType'], 'audio')
+
+    def test_bad_picture_does_not_lose_audio_or_block_card_confirmation(self):
+        for screenshot in ('not base64!', base64.b64encode(b'not jpeg').decode(), 'a'*2_000_001, {}):
+            job_id = self.ranked_job(review=True)
+            self.queue.rank(job_id)
+            self.queue.choose(job_id, 0)
+            self.queue.confirm_choice(job_id, screenshot=screenshot)
+            job = self.queue.jobs[job_id]
+            self.assertTrue(job['confirmed'])
+            self.assertFalse(job.get('hasScreenshot'))
+            self.assertTrue(job['screenshotError'])
+            self.assertFalse((Path(job['directory'])/'screenshot.jpg').exists())
+
     def test_restart_does_not_accept_an_unconfirmed_word(self):
         job_id = self.ranked_job(review=True)
         self.queue.rank(job_id)
@@ -424,7 +453,7 @@ class QueueTests(unittest.TestCase):
 class CardTests(unittest.TestCase):
     def test_v_sets_senren_audio_mode_and_n_clears_it_without_losing_media_or_definition(self):
         config = {'card_format': 'Expression', 'deck': 'Mining',
-                  'sentence_field': 'sentence', 'audio_field': 'sentenceAudio'}
+                  'sentence_field': 'sentence', 'audio_field': 'sentenceAudio', 'image_field': 'picture'}
         fields = {'word': {'value': '{expression}'}, 'definition': {'value': '{glossary}'},
                   'audioCard': {'value': 'stale audio setting'}}
         pipeline = Pipeline(config)
@@ -433,15 +462,16 @@ class CardTests(unittest.TestCase):
             if action == 'ankiCardFormats' else {'fields': [
                 {'expression': '労力', 'reading': 'ろうりょく', 'glossary': 'effort'}]}))
         pipeline.anki = Mock(side_effect=lambda action, **_: (
-            ['word', 'definition', 'audioCard', 'sentence', 'sentenceAudio']
+            ['word', 'definition', 'audioCard', 'sentence', 'sentenceAudio', 'picture']
             if action == 'modelFieldNames' else ['Mining']))
         word = {'term': '労力', 'reading': 'ろうりょく', 'surface': '労力'}
         for mode, flag in [('audio', '1'), ('normal', '')]:
             with self.subTest(mode=mode):
-                note, _ = pipeline.build({'id': 'test', 'cardType': mode,
+                note, _ = pipeline.build({'id': 'test', 'cardType': mode, 'hasScreenshot': True,
                                           'subtitle': {'text': '労力に見合った成果'}}, word)
                 self.assertEqual(note['fields']['audioCard'], flag)
                 self.assertEqual(note['fields']['sentenceAudio'], '[sound:asb_test.mp3]')
+                self.assertEqual(note['fields']['picture'], '<img src="asb_test.jpg">')
                 self.assertEqual(note['fields']['definition'], 'effort')
                 self.assertEqual(note['fields']['sentence'], '<b>労力</b>に見合った成果')
                 self.assertEqual(note['deckName'], 'Mining')
@@ -561,6 +591,19 @@ class CardTests(unittest.TestCase):
             stored = pipeline.anki.call_args_list[1]
             self.assertEqual(stored.args, ('storeMediaFile',))
             self.assertEqual(stored.kwargs['filename'], 'asb_test.mp3')
+
+    def test_export_uploads_chrome_image_and_obs_audio_before_creating_card(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory)/'sentence.mp3').write_bytes(b'audio fixture')
+            (Path(directory)/'screenshot.jpg').write_bytes(b'image fixture')
+            pipeline = Pipeline({})
+            pipeline.build = Mock(return_value=({'fields': {'picture': '<img src="asb_test.jpg">'}}, {}))
+            pipeline.anki = Mock(side_effect=[[], 'asb_test.mp3', 'asb_test.jpg', 123])
+            self.assertEqual(pipeline.export({'id': 'test', 'directory': directory, 'hasScreenshot': True}, {}), 123)
+            calls = pipeline.anki.call_args_list
+            self.assertEqual(calls[2].kwargs, {'filename': 'asb_test.jpg',
+                                              'data': base64.b64encode(b'image fixture').decode()})
+            self.assertEqual(calls[3].args, ('addNote',))
 
     def test_extraction_accepts_an_audio_only_replay_and_does_not_extract_frames(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,4 +1,5 @@
 import { isSentenceExplanationContext } from './sentence-explanation-context';
+import { captureMiningScreenshot, maxMiningScreenshotLength } from './buffered-mining-screenshot';
 import type TabRegistry from '@project/extension/src/services/tab-registry';
 
 const hostName = 'com.asbplayer.mining';
@@ -85,6 +86,10 @@ export function bindBufferedMiningHost(registry: TabRegistry) {
                       context: { before: context.before, after: context.after },
                   })
                 : Promise.resolve({ error: 'Invalid surrounding subtitles.' });
+        } else if (request.action === 'capture-screenshot' && content && !viewer) {
+            response = captureMiningScreenshot(sender.tab!.id!, request.src, request.params).then((screenshot) => ({
+                screenshot,
+            }));
         } else if (request.action === 'status' && (ownUi || viewer)) {
             response = native({ action: 'status' });
         } else if (
@@ -104,6 +109,11 @@ export function bindBufferedMiningHost(registry: TabRegistry) {
                 id: request.id,
                 index: request.index,
                 cardType: request.cardType === 'audio' ? 'audio' : 'normal',
+                ...(request.action === 'confirm-choice' &&
+                typeof request.screenshot === 'string' &&
+                request.screenshot.length <= maxMiningScreenshotLength
+                    ? { screenshot: request.screenshot }
+                    : {}),
             });
         } else if ((request.action === 'observe' || request.action === 'enqueue') && content && !viewer) {
             response = (async () => {
