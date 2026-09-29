@@ -639,6 +639,8 @@ class CardTests(unittest.TestCase):
             (Path(directory) / 'sentence.mp3').write_bytes(b'audio fixture')
             pipeline = Pipeline({})
             pipeline.build = Mock(return_value=({'fields': {'picture': ''}}, {}))
+            pipeline.card_format = Mock(return_value={})
+            pipeline.mined_note = Mock(return_value=None)
             pipeline.anki = Mock(side_effect=[[], 'asb_test.mp3', 123])
             self.assertEqual(pipeline.export({'id': 'test', 'directory': directory}, {}), 123)
             stored = pipeline.anki.call_args_list[1]
@@ -651,6 +653,8 @@ class CardTests(unittest.TestCase):
             (Path(directory)/'screenshot.jpg').write_bytes(b'image fixture')
             pipeline = Pipeline({})
             pipeline.build = Mock(return_value=({'fields': {'picture': '<img src="asb_test.jpg">'}}, {}))
+            pipeline.card_format = Mock(return_value={})
+            pipeline.mined_note = Mock(return_value=None)
             pipeline.anki = Mock(side_effect=[[], 'asb_test.mp3', 'asb_test.jpg', 123])
             self.assertEqual(pipeline.export({'id': 'test', 'directory': directory, 'hasScreenshot': True}, {}), 123)
             calls = pipeline.anki.call_args_list

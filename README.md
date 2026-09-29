@@ -12,6 +12,7 @@ Press **N** when you hear a word you don't know. Jev ranks the words in the curr
 - Shows word choices as soon as they're ready. One choice goes straight to the definition; gaps use the last subtitle.
 - Makes Anki cards from Yomitan entries, with sentence audio from an OBS buffer. No replaying to record, and pauses are cut out.
 - Queues exports so you can keep mining while earlier cards finish.
+- Skips words already in Anki, including matching kana and kanji spellings.
 - Explains sentences in Japanese with the surrounding subtitles for context.
 
 Screenshots use Chrome's capture API when available. If the dictionary parser misses a word, Jev can flag it for Luna to generate an entry.

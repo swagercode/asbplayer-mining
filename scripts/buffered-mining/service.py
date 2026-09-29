@@ -15,7 +15,7 @@ import threading
 import time
 
 from media import Obs, SilentAudioError, extract, wall_ranges
-from pipeline import Pipeline
+from pipeline import AlreadyMined, Pipeline
 from sentence_explanation import Explanations
 from jev_ranker import should_recover_unparsed
 
@@ -86,7 +86,7 @@ class Queue:
         for path in (root / 'jobs').glob('*/job.json'):
             job = json.loads(path.read_text())
             self.jobs[job['id']] = job
-            if job['state'] not in ('complete', 'failed', 'cancelled'):
+            if job['state'] not in ('complete', 'already mined', 'failed', 'cancelled'):
                 job.pop('exportStarted', None)
                 if job.get('hasMedia'):
                     job['state'] = 'ready'
@@ -426,7 +426,7 @@ class Queue:
     def process(self, job_id):
         job = self.jobs[job_id]
         with self.lock:
-            if job['state'] == 'cancelled' or job.get('exportStarted'):
+            if job['state'] in ('complete', 'already mined', 'cancelled') or job.get('exportStarted'):
                 return
             if job.get('requiresChoice') and (not job.get('selection') or not job['hasMedia']):
                 if job['hasMedia']:
@@ -446,8 +446,11 @@ class Queue:
                 word = self.pipeline.choose(job['subtitle']['text'], candidates)
                 self.change(job_id, selection=word, word=word['term'])
             self.change(job_id, state='creating card')
-            note_id = self.pipeline.export(job, word)
-            self.change(job_id, state='complete', noteId=note_id)
+            try:
+                note_id = self.pipeline.export(job, word)
+                self.change(job_id, state='complete', noteId=note_id)
+            except AlreadyMined as duplicate:
+                self.change(job_id, state='already mined', noteId=duplicate.note_id, error='')
             # Retain small mined assets and the receipt; release the large replay only after success.
             if job.get('replay'):
                 try:
@@ -502,7 +505,7 @@ class Queue:
             if action == 'status':
                 recent = sorted(self.jobs.values(), key=lambda j: j['created'], reverse=True)
                 return {'enabled': self.config.get('enabled', False), 'obsError': self.obs_error,
-                        'pending': sum(j['state'] not in ('complete', 'failed', 'cancelled') for j in recent),
+                        'pending': sum(j['state'] not in ('complete', 'already mined', 'failed', 'cancelled') for j in recent),
                         'completed': sum(j['state'] == 'complete' for j in recent),
                         'errorCount': sum(j['state'] == 'failed' for j in recent),
                         'jobs': [{k: j.get(k) for k in ('id', 'state', 'word', 'error', 'hasMedia', 'noteId')}

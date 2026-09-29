@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import threading
 import unicodedata
 import urllib.request
 
@@ -57,9 +58,28 @@ def subtitle_dialogue(sentence):
     return dialogue, speakers
 
 
+class AlreadyMined(Exception):
+    def __init__(self, note_id):
+        super().__init__('This word is already in Anki; no new card was created.')
+        self.note_id = note_id
+
+
+def plain_field(value):
+    value = re.sub(r'<(?:rt|rp)\b[^>]*>.*?</(?:rt|rp)>', '', value, flags=re.I | re.S)
+    return html.unescape(re.sub('<[^>]*>', '', value)).strip()
+
+
+def word_tag(word):
+    identity = json.dumps([normalized_surface(word['term']), normalized_surface(word['reading'])],
+                          ensure_ascii=False).encode()
+    return 'asb_word_' + hashlib.sha256(identity).hexdigest()
+
+
 class Pipeline:
     def __init__(self, config):
         self.config = config
+        # Different sentences can finish on both export workers at the same time.
+        self.export_lock = threading.Lock()
 
     def yomi(self, action, body):
         return post(self.config['yomitan_url'].rstrip('/') + '/' + action, body)
@@ -203,11 +223,66 @@ class Pipeline:
         from luna_fallback import generate
         return generate(self.config, sentence, candidates)
 
-    def build(self, job, word):
+    def card_format(self):
         formats = self.yomi('ankiCardFormats', {})
         card_format = next((f for f in formats if f['name'] == self.config['card_format']), None)
         if not card_format or card_format.get('type') != 'term':
             raise ValueError('The configured Yomitan term card format is unavailable.')
+        return card_format
+
+    @lru_cache(maxsize=512)
+    def word_spellings(self, term, reading):
+        spellings = {term}
+        senses = self.dictionary_senses(term, reading)
+        if senses:
+            for result in self.yomi('termEntries', {'term': [reading]}):
+                for entry in result['dictionaryEntries']:
+                    indices = set()
+                    for definition in entry['definitions']:
+                        content = json.dumps(definition.get('entries'), sort_keys=True, ensure_ascii=False).encode()
+                        if (definition['dictionary'], hashlib.sha256(content).digest()) in senses:
+                            indices.update(definition['headwordIndices'])
+                    spellings.update(h['term'] for h in entry['headwords'] if h['index'] in indices
+                                     and normalized_surface(h['reading']) == normalized_surface(reading))
+        return frozenset(spellings)
+
+    def mined_note(self, word, card_format=None):
+        card_format = card_format or self.card_format()
+        fields = card_format['fields']
+        expression_fields = [name for name, spec in fields.items()
+                             if re.search(r'\{(?:expression|furigana|furigana-plain)\}', spec['value'])]
+        reading_fields = [name for name, spec in fields.items() if spec['value'].strip() == '{reading}']
+        if not expression_fields:
+            raise ValueError('The Yomitan card format needs an expression field to check already-mined words.')
+        spellings = ({word['term']} if word.get('generatedBy') else
+                     self.word_spellings(word['term'], word['reading']))
+        # Search all decks, including manually mined and moved notes. Anki strips HTML
+        # when searching; verify complete field values below to exclude longer words.
+        queries = ['tag:' + word_tag(word)]
+        for field in expression_fields:
+            for term in sorted(spellings):
+                query = field + ':re:' + re.escape(term)
+                queries.append('"' + query.replace('\\', '\\\\').replace('"', '\\"') + '"')
+        ids = self.anki('findNotes', query='(' + ' OR '.join(queries) + ')')
+        wanted = {normalized_surface(term) for term in spellings}
+        reading = normalized_surface(word['reading'])
+        for offset in range(0, len(ids), 100):
+            for note in self.anki('notesInfo', notes=ids[offset:offset + 100]):
+                if word_tag(word) in note.get('tags', []):
+                    return note['noteId']
+                values = note['fields']
+                expressions = [plain_field(values[name]['value']) for name in expression_fields if name in values]
+                expressions = [re.sub(r'(?<=[一-龯々])\[[^\]]+\]', '', value) for value in expressions]
+                if not any(normalized_surface(value) in wanted for value in expressions):
+                    continue
+                readings = [normalized_surface(plain_field(values[name]['value'])) for name in reading_fields
+                            if name in values and plain_field(values[name]['value'])]
+                if not readings or reading in readings:
+                    return note['noteId']
+        return None
+
+    def build(self, job, word, card_format=None):
+        card_format = card_format or self.card_format()
         markers = {'expression', 'reading', 'glossary'}
         for field in card_format['fields'].values():
             markers.update(re.findall(r'\{([^{}]+)\}', field['value']))
@@ -271,16 +346,24 @@ class Pipeline:
         return {'deckName': self.config['deck'], 'modelName': card_format['model'], 'fields': fields,
                 'tags': ['asbplayer', 'jev' if job.get('requiresChoice') else 'luna',
                          *(['luna_generated'] if generated else []),
-                         'asb_job_' + job['id'].replace('-', '')],
+                         'asb_job_' + job['id'].replace('-', ''), word_tag(word)],
                 'options': {'allowDuplicate': False}}, result
 
     def export(self, job, word):
+        with self.export_lock:
+            return self._export(job, word)
+
+    def _export(self, job, word):
         # The stable tag recovers a successful addNote even if its response was lost.
         tag = 'asb_job_' + job['id'].replace('-', '')
         existing = self.anki('findNotes', query='tag:' + tag)
         if existing:
             return existing[0]
-        note, media = self.build(job, word)
+        card_format = self.card_format()
+        existing = self.mined_note(word, card_format)
+        if existing is not None:
+            raise AlreadyMined(existing)
+        note, media = self.build(job, word, card_format)
         for item in media.get('dictionaryMedia', []) + media.get('audioMedia', []):
             self.anki('storeMediaFile', filename=item['ankiFilename'], data=item['content'])
         for extension in ('mp3',):
