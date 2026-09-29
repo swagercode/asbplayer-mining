@@ -168,7 +168,7 @@ class Queue:
         obs.refresh_audio_source()
         self.last_audio_refresh = time.monotonic()
         self.silent_checks = 0
-        self.obs_error = 'Chrome audio capture was refreshed; waiting for an audio signal.'
+        self.obs_error = 'OBS audio capture was refreshed; waiting for an audio signal.'
 
     def recover_audio(self):
         try:

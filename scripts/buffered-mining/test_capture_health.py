@@ -6,12 +6,18 @@ from pathlib import Path
 import unittest
 from unittest.mock import Mock
 
-from media import Obs, SilentAudioError, extract
+from media import Obs, SilentAudioError, extract, audio_source_settings
 from pipeline import Pipeline
 
 
 @unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'), 'ffmpeg is required')
 class CapturedAudioTests(unittest.TestCase):
+    def test_capture_modes_are_explicit_and_keep_application_capture_as_default(self):
+        self.assertEqual(audio_source_settings({}), {'type': 1, 'application': 'com.google.Chrome'})
+        self.assertEqual(audio_source_settings({'obs_audio_capture_mode': 'desktop'}), {'type': 0})
+        with self.assertRaises(ValueError):
+            audio_source_settings({'obs_audio_capture_mode': 'unknown'})
+
     def test_silence_rejected_and_quiet_stitched_audio_accepted(self):
         config = {'ffmpeg': shutil.which('ffmpeg'), 'ffprobe': shutil.which('ffprobe')}
         with tempfile.TemporaryDirectory() as directory:

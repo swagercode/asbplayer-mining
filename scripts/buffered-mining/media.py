@@ -14,6 +14,15 @@ class SilentAudioError(ValueError):
     pass
 
 
+def audio_source_settings(config):
+    mode = config.get('obs_audio_capture_mode', 'chrome')
+    if mode == 'desktop':
+        return {'type': 0}
+    if mode == 'chrome':
+        return {'type': 1, 'application': 'com.google.Chrome'}
+    raise ValueError('Choose chrome or desktop for obs_audio_capture_mode.')
+
+
 def validate_audio(config, path):
     """Reject digital silence, without rejecting quiet speech or pauses within a clip."""
     result = subprocess.run([config['ffmpeg'], '-hide_banner', '-nostdin', '-i', str(path),
@@ -24,7 +33,7 @@ def validate_audio(config, path):
         raise ValueError('Could not verify the captured sentence audio; no card was created.')
     peak = float(match[1])
     if not math.isfinite(peak) or peak <= -90:
-        raise SilentAudioError('OBS captured silence, so no card was created. The Chrome audio source '
+        raise SilentAudioError('OBS captured silence, so no card was created. The OBS audio source '
                                'is being refreshed. Let the sentence play naturally before mining again.')
 
 
@@ -129,9 +138,10 @@ class Obs:
     def ensure_audio_source(self):
         name = 'asbplayer Chrome audio'
         source = self.call('GetInputSettings', inputName=name)
-        if (source['inputKind'] != 'sck_audio_capture' or source['inputSettings'].get('type') != 1
-                or source['inputSettings'].get('application') != 'com.google.Chrome'):
-            raise ValueError('Configure the dedicated Chrome application-audio source in OBS.')
+        expected = audio_source_settings(self.config)
+        if (source['inputKind'] != 'sck_audio_capture'
+                or any(source['inputSettings'].get(key) != value for key, value in expected.items())):
+            raise ValueError('Configure the dedicated OBS audio source for the selected capture mode.')
         inputs = self.call('GetInputList')['inputs']
         if any(i['inputKind'] in ('screen_capture', 'display_capture', 'window_capture') for i in inputs):
             raise ValueError('Remove screen-capture sources from the audio-only asbplayer OBS collection.')
@@ -142,7 +152,7 @@ class Obs:
             raise ValueError('Unmute the Chrome audio source in OBS.')
 
     def refresh_audio_source(self):
-        """Recreate only the dedicated audio source to refresh ScreenCaptureKit's app list.
+        """Recreate only the dedicated audio source and retain its capture mode.
 
         SetInputSettings alone reuses OBS's cached SCRunningApplication, which can
         point at a Chrome process that has exited. Keep the replay buffer running.

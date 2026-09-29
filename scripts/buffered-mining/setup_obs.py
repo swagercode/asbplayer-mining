@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Configure a dedicated Chrome application-audio replay buffer, with no screen capture."""
+"""Configure an audio-only replay buffer using Chrome or desktop audio."""
 import json
 from pathlib import Path
 import time
 
-from media import Obs
+from media import Obs, audio_source_settings
 
 
 def setup(config):
@@ -48,7 +48,7 @@ def setup(config):
         inputs = obs.call('GetInputList')['inputs']
         names = {i['inputName'] for i in inputs}
         for name, kind, settings in (
-            ('asbplayer Chrome audio', 'sck_audio_capture', {'type': 1, 'application': 'com.google.Chrome'}),
+            ('asbplayer Chrome audio', 'sck_audio_capture', audio_source_settings(config)),
             # OBS requires a video canvas for its replay output. This is a constant color, not a captured image.
             ('asbplayer audio canvas', 'color_source_v3', {'color': 4278190080, 'width': 1280, 'height': 720}),
         ):
@@ -79,7 +79,7 @@ def setup(config):
             time.sleep(.1)
         obs.ensure_audio_source()
         obs.start()
-        print('Chrome application-audio buffer is running. No window or display capture source is used.')
+        print('Audio-only buffer is running. Capture mode:', config.get('obs_audio_capture_mode', 'chrome'))
 
 
 if __name__ == '__main__':
