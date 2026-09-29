@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from subtitle_sync import align
 
 HOST_DIR = Path(__file__).resolve().parent
 MODEL = 'gpt-6-luna'
@@ -98,6 +99,8 @@ def complete(prompt):
 
 def handle(message):
     action = message.get('action')
+    if action == 'align':
+        return align(message, HOST_DIR)
     if action == 'status':
         return {'connected': login_status(), 'model': MODEL}
     if action == 'complete':
@@ -116,7 +119,9 @@ def main():
         message = json.loads(sys.stdin.buffer.read(size))
         response = handle(message)
     except subprocess.TimeoutExpired:
-        response = {'error': 'ChatGPT subtitle selection timed out. Reload the episode to retry.'}
+        response = {'error': ('Subtitle alignment timed out. The original timings will be retained.'
+                              if message.get('action') == 'align' else
+                              'ChatGPT subtitle selection timed out. Reload the episode to retry.')}
     except Exception as error:
         response = {'error': str(error)}
     encoded = json.dumps(response).encode()

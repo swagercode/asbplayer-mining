@@ -572,6 +572,25 @@ describe('Binding playback mode integration', () => {
         binding.unbind();
     });
 
+    it('clears a remembered offset only when the matching automatically aligned file arrives', async () => {
+        const video = createVideo();
+        const binding = new Binding(video, bindingOptions(false, false));
+        binding.bind();
+        await jest.advanceTimersByTimeAsync(0);
+        (binding as unknown as { autoAlignedSubtitleFileNames: string[] }).autoAlignedSubtitleFileNames = [
+            'aligned.srt',
+        ];
+        const offset = jest.spyOn(binding, 'subtitleOffsetChanged');
+        const shifted = makeSubtitle({ start: 5000, end: 6000, originalStart: 1000, originalEnd: 2000 });
+        sendSubtitles(binding, [shifted], ['old.srt']);
+        expect(offset).not.toHaveBeenCalled();
+        sendSubtitles(binding, [shifted], ['aligned.srt']);
+        expect(offset).toHaveBeenCalledWith(0, { notifyPlayer: true });
+        expect(binding.subtitleController.subtitles[0].start).toBe(1000);
+        expect(binding.subtitleController.subtitles[0].end).toBe(2000);
+        binding.unbind();
+    });
+
     it('applies an initially loaded subtitle offset to playback timing', async () => {
         await storage.set({ autoPausePreference: AutoPausePreference.atStart, lastSubtitleOffset: 1000 });
         const video = createVideo();

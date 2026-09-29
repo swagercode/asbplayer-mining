@@ -30,6 +30,7 @@ import { frameColorSchemeStyleBlock } from '@/services/frame-color-scheme';
 import { setGenericSubtitleParserOptionsForHost } from '@/services/generic-subtitle-parser';
 import JimakuAutoSelectService from '@/services/jimaku-auto-select-service';
 import { disableCrunchyrollNativeSubtitles } from '@/services/crunchyroll-native-subtitles';
+import { autoSynchronizeSubtitles } from '@/services/subtitle-auto-sync';
 import type { PageDelegate } from '@/services/pages';
 import { JimakuAutoSelectError } from '@project/common/subtitle-sources/jimaku-auto-select';
 import type { JimakuSubtitleCandidate } from '@project/common/subtitle-sources/jimaku-auto-select';
@@ -561,7 +562,7 @@ export default class VideoDataSyncController {
             const name = basename ? `${basename} - ${labelWithoutExtension}` : labelWithoutExtension;
 
             // _syncDataArray reports its own errors via the picker
-            if (await this._syncDataArray([{ ...track, name }], undefined, isStale)) {
+            if (await this._syncDataArray([{ ...track, name }], undefined, isStale, true)) {
                 void this._rememberJimakuWork(result.entry);
             }
 
@@ -842,7 +843,8 @@ export default class VideoDataSyncController {
     private async _syncDataArray(
         data: ConfirmedVideoDataSubtitleTrack[],
         syncWithAsbplayerId?: string,
-        isStale: () => boolean = () => false
+        isStale: () => boolean = () => false,
+        autoAlign = false
     ) {
         try {
             const subtitles: SerializedSubtitleFile[] = [];
@@ -856,10 +858,20 @@ export default class VideoDataSyncController {
                 }
             }
 
+            const result = autoAlign
+                ? await autoSynchronizeSubtitles(
+                      subtitles,
+                      this._syncedData?.subtitles ?? [],
+                      this._context.video.duration,
+                      isStale
+                  )
+                : { files: subtitles, aligned: false };
+            if (isStale()) return false;
             await this._syncSubtitles(
-                subtitles,
+                result.files,
                 data.some((track) => typeof track.url === 'object'),
-                syncWithAsbplayerId
+                syncWithAsbplayerId,
+                result.aligned
             );
             return true;
         } catch (error) {
@@ -875,12 +887,13 @@ export default class VideoDataSyncController {
     private async _syncSubtitles(
         serializedFiles: SerializedSubtitleFile[],
         flatten: boolean,
-        syncWithAsbplayerId?: string
+        syncWithAsbplayerId?: string,
+        resetOffset = false
     ) {
         const files: File[] = await Promise.all(
             serializedFiles.map(async (f) => new File([base64ToBlob(f.base64, 'text/plain')], f.name))
         );
-        await this._context.loadSubtitles(files, flatten, syncWithAsbplayerId);
+        await this._context.loadSubtitles(files, flatten, syncWithAsbplayerId, resetOffset);
     }
 
     private async _subtitlesForUrl(

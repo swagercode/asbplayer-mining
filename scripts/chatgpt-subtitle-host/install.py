@@ -61,7 +61,7 @@ def install(browser, chrome_manifest, home=None):
     target = support / 'asbplayer-extension/chatgpt-host'
     target.mkdir(parents=True, exist_ok=True)
     target.chmod(0o700)
-    for name in ['host.py', 'instructions.txt']:
+    for name in ['subtitle_sync.py', 'host.py', 'instructions.txt']:
         write_if_changed(target / name, (SOURCE / name).read_bytes())
     write_if_changed(target / 'config.json', json.dumps({'codex': codex}).encode())
     launcher = target / 'launch'

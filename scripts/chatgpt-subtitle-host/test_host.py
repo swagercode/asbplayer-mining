@@ -10,6 +10,13 @@ import host
 
 
 class HostTests(unittest.TestCase):
+    def test_alignment_does_not_check_login_or_call_a_model(self):
+        with patch.object(host, 'login_status', side_effect=AssertionError('Alignment used ChatGPT')), \
+                patch.object(host, 'align', return_value={'accepted': True}) as alignment:
+            request = {'action': 'align', 'source': [], 'reference': []}
+            self.assertTrue(host.handle(request)['accepted'])
+            alignment.assert_called_once_with(request, host.HOST_DIR)
+
     def test_rejects_other_commands(self):
         with self.assertRaisesRegex(ValueError, 'Unsupported'):
             host.handle({'action': 'run', 'command': 'anything'})

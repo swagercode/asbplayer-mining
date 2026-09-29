@@ -1840,7 +1840,10 @@ export default class Binding {
         return cropAndResize(maxWidth, maxHeight, rect, tabImageDataUrl);
     }
 
-    async loadSubtitles(files: File[], flatten: boolean, syncWithAsbplayerId?: string) {
+    private autoAlignedSubtitleFileNames?: string[];
+
+    async loadSubtitles(files: File[], flatten: boolean, syncWithAsbplayerId?: string, resetOffset = false) {
+        this.autoAlignedSubtitleFileNames = resetOffset ? files.map((file) => file.name) : undefined;
         const {
             streamingSubtitleListPreference,
             subtitleRegexFilter,
@@ -1936,6 +1939,13 @@ export default class Binding {
             this._playbackPositionKeys(nonEmptyTrackIndexes, subtitleFileNames)
         );
         this.playbackEngine.subtitlesChanged(this.subtitleController.subtitles);
+
+        if (this.autoAlignedSubtitleFileNames?.join('\n') === subtitleFileNames.join('\n')) {
+            this.autoAlignedSubtitleFileNames = undefined;
+            // Reset a remembered manual offset only after the aligned file has
+            // reached the player. The ordinary offset message also updates its viewer.
+            this.subtitleOffsetChanged(0, { notifyPlayer: true });
+        }
 
         this.subtitleController.showLoadedMessage(nonEmptyTrackIndexes);
         this.ankiUiSavedState = undefined;

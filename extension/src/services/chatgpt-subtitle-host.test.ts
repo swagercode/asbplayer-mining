@@ -92,6 +92,22 @@ describe.each(['moz-extension', 'chrome-extension'])('ChatGPT subtitle bridge ro
         expect(sendResponse).not.toHaveBeenCalled();
     });
 
+    it('routes bounded timing-only alignment requests without a model prompt', async () => {
+        const cues = Array.from({ length: 30 }, (_, i) => [i * 3000, i * 3000 + 1500]);
+        const alignment = { sender: request.sender, action: 'align', source: cues, reference: cues, duration: 100000 };
+        expect(listener(alignment, sender(episodeUrl), sendResponse)).toBe(true);
+        await Promise.resolve();
+        expect(sendNativeMessage).toHaveBeenCalledWith('com.asbplayer.chatgpt', {
+            action: 'align',
+            source: cues,
+            reference: cues,
+            duration: 100000,
+        });
+        sendNativeMessage.mockClear();
+        listener({ ...alignment, source: [[0, Infinity]] }, sender(episodeUrl), sendResponse);
+        expect(sendNativeMessage).not.toHaveBeenCalled();
+    });
+
     it('returns a native connection error when the host cannot start', async () => {
         sendNativeMessage.mockRejectedValue(new Error('Native host missing'));
         listener(request, sender(episodeUrl), sendResponse);
