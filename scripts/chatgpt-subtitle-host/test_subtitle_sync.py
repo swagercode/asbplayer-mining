@@ -30,6 +30,31 @@ class ValidationTests(unittest.TestCase):
         ref = sequence()
         self.assertFalse(quality(ref, ref, ref[:120], ref[-1][1]+10000)['accepted'])
 
+    def test_one_language_only_music_does_not_reject_matching_dialogue(self):
+        # Independent timelines: one release translates songs, the other does not.
+        dialogue = [[a, b] for a, b in sequence() if b < 930000 and (b < 210000 or a > 305000)]
+        end = dialogue[-1][1]
+        lyrics = [[a, a+2800] for a in range(215000, 300000, 3000)]
+        lyrics += [[a, a+2800] for a in range(end+5000, end+90000, 3000)]
+        for reference, source in ((dialogue+lyrics, dialogue), (dialogue, dialogue+lyrics)):
+            result = quality(reference, source, source, end+95000)
+            self.assertTrue(result['accepted'], result)
+            self.assertGreater(result['ignoredGapMs'], 150000)
+
+    def test_many_missing_sections_cannot_be_excused_as_music(self):
+        ref = sequence()
+        incomplete = [[a, b] for a, b in ref
+                      if not any(start < a < start+100000 for start in (100000, 300000, 500000, 700000))]
+        result = quality(ref, incomplete, incomplete, ref[-1][1]+10000)
+        self.assertFalse(result['accepted'], result)
+        self.assertEqual(result['ignoredGapMs'], 0)
+
+    def test_matching_music_does_not_hide_wrong_dialogue(self):
+        music = [[a, a+2800] for a in range(210000, 300000, 3000)]
+        source = sequence(81)+music
+        result = quality(sequence()+music, source, source, max(b for _, b in source)+10000)
+        self.assertFalse(result['accepted'], result)
+
 
 @unittest.skipUnless(shutil.which('alass-cli'), 'ALASS is required')
 class AlignmentTests(unittest.TestCase):

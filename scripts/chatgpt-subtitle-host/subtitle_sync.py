@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 
-VERSION = 1
+VERSION = 2
 MAX_CUES = 5000
 MAX_TIME = 12 * 60 * 60 * 1000
 
@@ -72,18 +72,52 @@ def correlation(a, b):
     return (n*overlap-na*nb)/denominator
 
 
+def unmatched_gap_mask(reference, aligned):
+    """Ignore short sections represented in only one language (often OP/ED lyrics).
+
+    Do not remove long missing sections or a large fraction of the episode:
+    those can indicate a truncated file or the wrong combined episode.
+    """
+    ignored = bytearray(len(reference))
+    for silent, other in ((reference, aligned), (aligned, reference)):
+        start = None
+        for i in range(len(silent) + 1):
+            active = i == len(silent) or silent[i]
+            if not active and start is None:
+                start = i
+            elif active and start is not None:
+                length = i - start
+                if 300 <= length <= 1500 and sum(other[start:i]) >= length * .25:
+                    ignored[start:i] = b'\1' * length
+                start = None
+    return ignored
+
+
 def quality(reference, source, aligned, duration):
     count = max(1, math.ceil(duration/100))
     ref, before, after = (activity(cues, count) for cues in (reference, source, aligned))
-    score, previous = correlation(ref, after), correlation(ref, before)
+    raw_score = correlation(ref, after)
+    ignored = unmatched_gap_mask(ref, after)
+    sufficient_coverage = sum(ignored) <= count * .2
+    if not sufficient_coverage:
+        ignored = bytearray(count)
+    # Use the same evidence for the original and corrected timings. Keep the
+    # windows on the episode clock, rather than compressing away music sections.
+    def evidence(mask, start=0, end=count):
+        return bytearray(mask[i] for i in range(start, end) if not ignored[i])
+
+    filtered_ref = evidence(ref)
+    score, previous = correlation(filtered_ref, evidence(after)), correlation(filtered_ref, evidence(before))
     windows = []
     for i in range(0, count, 3000):
-        a, b = ref[i:i+3000], after[i:i+3000]
+        a, b = evidence(ref, i, min(i+3000, count)), evidence(after, i, min(i+3000, count))
         if len(a) >= 600 and sum(a) >= 100:
             windows.append(correlation(a, b))
-    accepted = score >= .5 and score >= previous-.02 and bool(windows) and min(windows) >= .25
+    accepted = (sufficient_coverage and score >= .5 and score >= previous-.02
+                and bool(windows) and min(windows) >= .25)
     return {'accepted': accepted, 'score': round(score, 4), 'previousScore': round(previous, 4),
-            'lowestWindowScore': round(min(windows, default=0), 4)}
+            'lowestWindowScore': round(min(windows, default=0), 4),
+            'rawScore': round(raw_score, 4), 'ignoredGapMs': sum(ignored)*100}
 
 
 def align(message, root):
