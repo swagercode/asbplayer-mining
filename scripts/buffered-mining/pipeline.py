@@ -1,5 +1,7 @@
 """Dictionary-backed word selection and idempotent Anki export. No playback controls."""
 import base64
+from functools import lru_cache
+import hashlib
 import html
 import json
 import math
@@ -151,10 +153,51 @@ class Pipeline:
 
     def rank(self, sentence, candidates):
         from jev_ranker import rank
-        return rank(sentence, candidates, self.config.get('jev_api_key'),
-                    self.config.get('jev_confidence_threshold', .05),
-                    provider=self.config.get('jev_provider', 'typesafe'),
-                    alternative_threshold=self.config.get('jev_alternative_confidence_threshold', .7))
+        result = rank(sentence, candidates, self.config.get('jev_api_key'),
+                      self.config.get('jev_confidence_threshold', .05),
+                      provider=self.config.get('jev_provider', 'typesafe'),
+                      alternative_threshold=self.config.get('jev_alternative_confidence_threshold', .7))
+        result['options'] = self.prefer_kanji(result['options'], candidates)
+        return result
+
+    @lru_cache(maxsize=512)
+    def dictionary_senses(self, term, reading):
+        """Dictionary content establishes spelling variants; reading alone cannot."""
+        senses = set()
+        for result in self.yomi('termEntries', {'term': [term]}):
+            for entry in result['dictionaryEntries']:
+                indices = {h['index'] for h in entry['headwords']
+                           if h['term'] == term and h['reading'] == reading}
+                for definition in entry['definitions']:
+                    if indices.intersection(definition['headwordIndices']) and definition.get('entries'):
+                        content = json.dumps(definition['entries'], sort_keys=True, ensure_ascii=False).encode()
+                        senses.add((definition['dictionary'], hashlib.sha256(content).digest()))
+        return frozenset(senses)
+
+    def prefer_kanji(self, options, candidates):
+        preferred = []
+        for option in options:
+            word = candidates[option['index']]
+            variants = [(i, c) for i, c in enumerate(candidates)
+                        if c['surface'] == word['surface'] and c['reading'] == word['reading']
+                        and re.search('[一-龯々]', c['term'])]
+            if not re.search('[一-龯々]', word['term']) and variants:
+                try:
+                    senses = self.dictionary_senses(word['term'], word['reading'])
+                    for index, variant in variants:
+                        if senses & self.dictionary_senses(variant['term'], variant['reading']):
+                            option = {**option, 'index': index, 'word': variant['term']}
+                            break
+                except Exception:
+                    # A lookup outage must not replace a validated contextual choice.
+                    pass
+            preferred.append(option)
+        merged = {}
+        for option in preferred:
+            key = (option['word'], option['reading'])
+            if key not in merged or option['confidence'] > merged[key]['confidence']:
+                merged[key] = option
+        return sorted(merged.values(), key=lambda option: (-option['confidence'], option['index']))
 
     def recover_unparsed(self, sentence, candidates):
         from luna_fallback import generate

@@ -14,7 +14,7 @@ import socketserver
 import threading
 import time
 
-from media import Obs, extract, wall_ranges
+from media import Obs, SilentAudioError, extract, wall_ranges
 from pipeline import Pipeline
 from sentence_explanation import Explanations
 from jev_ranker import should_recover_unparsed
@@ -79,6 +79,8 @@ class Queue:
         self.last_playing = time.monotonic()
         self.started_buffer = False
         self.obs_error = ''
+        self.silent_checks = 0
+        self.last_audio_refresh = -60
         self.pipeline = Pipeline(config)
         (root / 'jobs').mkdir(mode=0o700, exist_ok=True)
         for path in (root / 'jobs').glob('*/job.json'):
@@ -131,13 +133,49 @@ class Queue:
             with Obs(self.config) as obs:
                 obs.ensure_scene()
                 obs.ensure_audio_source()
+                if not obs.call('GetReplayBufferStatus')['outputActive']:
+                    # A new watching session may follow Chrome restarting while
+                    # OBS kept an obsolete application object alive.
+                    self.refresh_audio(obs)
                 self.started_buffer = obs.start() or self.started_buffer
-            self.obs_error = ''
+                # Silence while paused is expected. Require repeated silent meter
+                # samples during actual DOM playback before restarting capture.
+                playing = self.playing_now()
+                peak = obs.audio_peak() if playing else None
+                if playing and self.playing_now() and peak <= .00003:
+                    self.silent_checks += 1
+                    if self.silent_checks >= 3:
+                        self.refresh_audio(obs)
+                else:
+                    self.silent_checks = 0
+                    if peak is not None:
+                        self.obs_error = ''
         except Exception as error:
             self.obs_error = str(error)
         finally:
             self.last_obs_check = time.monotonic()
             self.obs_check_pending = False
+
+    def playing_now(self):
+        with self.lock:
+            return any(points and points[-1]['playing'] and not points[-1].get('seeking')
+                       and 0 <= time.time() - points[-1]['wall'] < 2
+                       for points in self.history.values())
+
+    def refresh_audio(self, obs):
+        if time.monotonic() - self.last_audio_refresh < 60:
+            return
+        obs.refresh_audio_source()
+        self.last_audio_refresh = time.monotonic()
+        self.silent_checks = 0
+        self.obs_error = 'Chrome audio capture was refreshed; waiting for an audio signal.'
+
+    def recover_audio(self):
+        try:
+            with Obs(self.config) as obs:
+                self.refresh_audio(obs)
+        except Exception as error:
+            self.obs_error = str(error)
 
     def stop_idle_buffer(self):
         try:
@@ -382,6 +420,8 @@ class Queue:
             with self.lock:
                 if job['state'] != 'cancelled':
                     self.change(job_id, state='failed', error=str(error))
+                    if isinstance(error, SilentAudioError):
+                        self.capture.submit(self.recover_audio)
 
     def process(self, job_id):
         job = self.jobs[job_id]

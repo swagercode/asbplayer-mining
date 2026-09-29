@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import Mock, patch
 import uuid
 
-from media import wall_ranges, extract
+from media import wall_ranges, extract, SilentAudioError
 from pipeline import Pipeline, frequency_ranks, subtitle_dialogue
 from service import Queue, merge_samples
 
@@ -188,6 +188,50 @@ class QueueTests(unittest.TestCase):
         self.queue.process(job_id)
         self.queue.pipeline.export.assert_called_once()
         self.assertFalse(self.queue.cancel_choice(job_id)['cancelled'])
+
+    def test_silent_capture_never_exports_and_requests_audio_recovery(self):
+        job_id = self.ranked_job(review=True)
+        self.queue.rank(job_id)
+        self.queue.choose(job_id, 0)
+        self.queue.confirm_choice(job_id)
+        self.queue.change(job_id, replay='silent.mkv', capturedAt=110, ranges=[[101, 103]])
+        with patch('service.extract', side_effect=SilentAudioError('OBS captured silence')):
+            self.queue.finish_capture(job_id)
+        self.assertEqual(self.queue.jobs[job_id]['state'], 'failed')
+        self.assertFalse(self.queue.jobs[job_id]['hasMedia'])
+        self.queue.pipeline.export.assert_not_called()
+        self.queue.capture.submit.assert_called_once_with(self.queue.recover_audio)
+
+    def test_watchdog_requires_repeated_silence_during_live_playback(self):
+        obs = Mock()
+        obs.audio_peak.return_value = 0
+        obs.start.return_value = False
+        obs.call.return_value = {'outputActive': True}
+        with patch('service.Obs') as factory, patch.object(self.queue, 'playing_now', return_value=True):
+            factory.return_value.__enter__.return_value = obs
+            for _ in range(2):
+                self.queue.ensure_obs()
+            obs.refresh_audio_source.assert_not_called()
+            self.queue.ensure_obs()
+            obs.refresh_audio_source.assert_called_once()
+            for _ in range(4):
+                self.queue.ensure_obs()
+            obs.refresh_audio_source.assert_called_once()  # bounded recovery rate
+            obs.audio_peak.return_value = .03
+            self.queue.ensure_obs()
+            self.assertEqual(self.queue.obs_error, '')
+            self.assertEqual(self.queue.silent_checks, 0)
+
+    def test_watchdog_ignores_paused_and_stale_playback(self):
+        self.queue.history['test'] = [sample(3, time.time() - 20)]
+        self.assertFalse(self.queue.playing_now())
+        self.queue.history['test'] = [sample(3, time.time(), playing=False)]
+        with patch('service.Obs') as factory:
+            obs = factory.return_value.__enter__.return_value
+            obs.call.return_value = {'outputActive': True}
+            self.queue.ensure_obs()
+            obs.audio_peak.assert_not_called()
+            obs.refresh_audio_source.assert_not_called()
 
     def test_b_wins_over_a_late_choice(self):
         job_id = self.ranked_job(review=True)
@@ -607,12 +651,13 @@ class CardTests(unittest.TestCase):
 
     def test_extraction_accepts_an_audio_only_replay_and_does_not_extract_frames(self):
         with tempfile.TemporaryDirectory() as directory:
-            with patch('media.subprocess.run') as run:
+            with patch('media.subprocess.run') as run, patch('media.validate_audio') as validate:
                 run.return_value.stdout = json.dumps({'format': {'duration': '10'}, 'streams': [{'codec_type': 'audio'}]})
                 extract({'ffprobe': 'ffprobe', 'ffmpeg': 'ffmpeg'}, Path('replay.mka'), 110, [[102, 104]], Path(directory))
             self.assertEqual(run.call_count, 2)
             self.assertIn('sentence.mp3', run.call_args.args[0][-1])
             self.assertNotIn('-frames:v', run.call_args.args[0])
+            validate.assert_called_once_with({'ffprobe': 'ffprobe', 'ffmpeg': 'ffmpeg'}, Path(directory)/'sentence.mp3')
 
     def test_lost_anki_response_does_not_create_another_card_on_retry(self):
         pipeline = Pipeline({})

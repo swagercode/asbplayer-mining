@@ -2,10 +2,30 @@
 import base64
 import hashlib
 import json
+import math
 from pathlib import Path
+import re
 import subprocess
 import time
 import uuid
+
+
+class SilentAudioError(ValueError):
+    pass
+
+
+def validate_audio(config, path):
+    """Reject digital silence, without rejecting quiet speech or pauses within a clip."""
+    result = subprocess.run([config['ffmpeg'], '-hide_banner', '-nostdin', '-i', str(path),
+                             '-vn', '-af', 'volumedetect', '-f', 'null', '-'],
+                            capture_output=True, text=True, check=True, timeout=30)
+    match = re.search(r'max_volume:\s*(-?inf|[-\d.]+) dB', result.stderr)
+    if not match:
+        raise ValueError('Could not verify the captured sentence audio; no card was created.')
+    peak = float(match[1])
+    if not math.isfinite(peak) or peak <= -90:
+        raise SilentAudioError('OBS captured silence, so no card was created. The Chrome audio source '
+                               'is being refreshed. Let the sentence play naturally before mining again.')
 
 
 def wall_ranges(samples, start, end):
@@ -121,6 +141,57 @@ class Obs:
         if self.call('GetInputMute', inputName=name)['inputMuted']:
             raise ValueError('Unmute the Chrome audio source in OBS.')
 
+    def refresh_audio_source(self):
+        """Recreate only the dedicated audio source to refresh ScreenCaptureKit's app list.
+
+        SetInputSettings alone reuses OBS's cached SCRunningApplication, which can
+        point at a Chrome process that has exited. Keep the replay buffer running.
+        """
+        self.ensure_scene()
+        self.ensure_audio_source()
+        name = 'asbplayer Chrome audio'
+        settings = self.call('GetInputSettings', inputName=name)['inputSettings']
+        volume = self.call('GetInputVolume', inputName=name)['inputVolumeMul']
+        tracks = self.call('GetInputAudioTracks', inputName=name)['inputAudioTracks']
+        # A disabled replacement is created first; failure leaves the old source intact.
+        replacement = name + ' refresh ' + str(uuid.uuid4())
+        item = self.call('CreateInput', sceneName=self.config['obs_scene'], inputName=replacement,
+                         inputKind='sck_audio_capture', inputSettings=settings, sceneItemEnabled=False)
+        try:
+            self.call('SetInputVolume', inputName=replacement, inputVolumeMul=volume)
+            self.call('SetInputAudioTracks', inputName=replacement, inputAudioTracks=tracks)
+        except Exception:
+            self.call('RemoveInput', inputName=replacement)
+            raise
+        self.call('RemoveInput', inputName=name)
+        # OBS removes sources on its UI queue; the name is not immediately free
+        # when RemoveInput acknowledges the request.
+        deadline = time.monotonic() + 5
+        while any(source['inputName'] == name for source in self.call('GetInputList')['inputs']):
+            if time.monotonic() >= deadline:
+                raise ValueError('OBS did not release the old Chrome audio source.')
+            time.sleep(.05)
+        self.call('SetInputName', inputName=replacement, newInputName=name)
+        self.call('SetSceneItemEnabled', sceneName=self.config['obs_scene'],
+                  sceneItemId=item['sceneItemId'], sceneItemEnabled=True)
+
+    def audio_peak(self, seconds=1):
+        """Sample meters in the background; this never controls browser playback."""
+        self.ws.send(json.dumps({'op': 3, 'd': {'eventSubscriptions': 64 | 65536}}))
+        deadline, peak = time.monotonic() + seconds, 0.0
+        while time.monotonic() < deadline:
+            message = json.loads(self.ws.recv())
+            if message.get('op') != 5:
+                continue
+            event = message['d']
+            if event['eventType'] == 'InputVolumeMeters':
+                for source in event['eventData']['inputs']:
+                    if source['inputName'] == 'asbplayer Chrome audio':
+                        peak = max([peak, *(value for channel in source['inputLevelsMul'] for value in channel)])
+            else:
+                self.events.append(event)
+        return peak
+
     def save(self):
         self.ensure_scene()
         if not self.call('GetReplayBufferStatus')['outputActive']:
@@ -157,3 +228,4 @@ def extract(config, replay, captured_at, ranges, directory):
     subprocess.run([config['ffmpeg'], '-v', 'error', '-nostdin', '-y', '-i', str(replay), '-filter_complex',
                     ';'.join(filters), '-map', '[out]', '-codec:a', 'libmp3lame', '-q:a', '3',
                     str(directory / 'sentence.mp3')], capture_output=True, check=True, timeout=60)
+    validate_audio(config, directory / 'sentence.mp3')
