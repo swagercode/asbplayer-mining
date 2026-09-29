@@ -12,11 +12,22 @@ from pipeline import Pipeline
 
 @unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'), 'ffmpeg is required')
 class CapturedAudioTests(unittest.TestCase):
-    def test_capture_modes_are_explicit_and_keep_application_capture_as_default(self):
+    def test_capture_is_isolated_to_chrome_and_rejects_desktop_mix(self):
         self.assertEqual(audio_source_settings({}), {'type': 1, 'application': 'com.google.Chrome'})
-        self.assertEqual(audio_source_settings({'obs_audio_capture_mode': 'desktop'}), {'type': 0})
-        with self.assertRaises(ValueError):
-            audio_source_settings({'obs_audio_capture_mode': 'unknown'})
+        self.assertEqual(audio_source_settings({'obs_audio_capture_mode': 'chrome'}),
+                         {'type': 1, 'application': 'com.google.Chrome'})
+        for mode in ('desktop', 'unknown'):
+            with self.assertRaises(ValueError):
+                audio_source_settings({'obs_audio_capture_mode': mode})
+
+    def test_desktop_source_is_rejected_before_a_replay_can_be_saved(self):
+        obs = Obs({'obs_scene': 'asbplayer'})
+        obs.ensure_scene = Mock()
+        obs.call = Mock(return_value={'inputKind': 'sck_audio_capture',
+                                      'inputSettings': {'type': 0}})
+        with self.assertRaisesRegex(ValueError, 'only Google Chrome'):
+            obs.save()
+        self.assertEqual([call.args[0] for call in obs.call.call_args_list], ['GetInputSettings'])
 
     def test_silence_rejected_and_quiet_stitched_audio_accepted(self):
         config = {'ffmpeg': shutil.which('ffmpeg'), 'ffprobe': shutil.which('ffprobe')}

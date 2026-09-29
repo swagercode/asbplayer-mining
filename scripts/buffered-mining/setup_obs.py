@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Configure an audio-only replay buffer using Chrome or desktop audio."""
+"""Configure an audio-only replay buffer isolated to Chrome."""
 import json
 from pathlib import Path
 import time

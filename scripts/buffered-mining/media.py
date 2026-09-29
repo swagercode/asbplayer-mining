@@ -16,11 +16,9 @@ class SilentAudioError(ValueError):
 
 def audio_source_settings(config):
     mode = config.get('obs_audio_capture_mode', 'chrome')
-    if mode == 'desktop':
-        return {'type': 0}
     if mode == 'chrome':
         return {'type': 1, 'application': 'com.google.Chrome'}
-    raise ValueError('Choose chrome or desktop for obs_audio_capture_mode.')
+    raise ValueError('Set obs_audio_capture_mode to chrome. Desktop audio can record unrelated applications.')
 
 
 def validate_audio(config, path):
@@ -141,7 +139,7 @@ class Obs:
         expected = audio_source_settings(self.config)
         if (source['inputKind'] != 'sck_audio_capture'
                 or any(source['inputSettings'].get(key) != value for key, value in expected.items())):
-            raise ValueError('Configure the dedicated OBS audio source for the selected capture mode.')
+            raise ValueError('Configure the dedicated OBS audio source to capture only Google Chrome.')
         inputs = self.call('GetInputList')['inputs']
         if any(i['inputKind'] in ('screen_capture', 'display_capture', 'window_capture') for i in inputs):
             raise ValueError('Remove screen-capture sources from the audio-only asbplayer OBS collection.')
@@ -152,7 +150,7 @@ class Obs:
             raise ValueError('Unmute the Chrome audio source in OBS.')
 
     def refresh_audio_source(self):
-        """Recreate only the dedicated audio source and retain its capture mode.
+        """Recreate only the dedicated Chrome audio source.
 
         SetInputSettings alone reuses OBS's cached SCRunningApplication, which can
         point at a Chrome process that has exited. Keep the replay buffer running.
@@ -204,6 +202,7 @@ class Obs:
 
     def save(self):
         self.ensure_scene()
+        self.ensure_audio_source()
         if not self.call('GetReplayBufferStatus')['outputActive']:
             raise ValueError('OBS replay buffer is not running. Start it before watching the sentence.')
         # Anchor to the capture request, not disk mtime (muxing may finish later).

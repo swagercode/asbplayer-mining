@@ -109,6 +109,15 @@ class QueueTests(unittest.TestCase):
         self.queue.enqueue(incoming)
         self.assertEqual(len(self.queue.jobs), 1)
 
+    def test_playback_diagnostics_return_the_latest_timeline_without_mutating_it(self):
+        self.assertEqual(self.queue.handle({'action': 'playback-history'}), {'session': None, 'samples': []})
+        point = sample(2, time.time(), playing=False)
+        self.queue.observe(point)
+        result = self.queue.handle({'action': 'playback-history'})
+        self.assertEqual(result['session'], point['session'])
+        self.assertEqual(result['samples'], [point])
+        self.assertEqual(self.queue.handle({'action': 'playback-history', 'session': 'missing'})['samples'], [])
+
     def ranked_job(self, review=False):
         incoming = {**self.incoming(), 'selectionMode': 'ranked', 'reviewBeforeExport': review}
         self.queue.enqueue(incoming)

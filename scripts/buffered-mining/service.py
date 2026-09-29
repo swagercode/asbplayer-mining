@@ -475,6 +475,14 @@ class Queue:
             return (self.confirm_choice(job_id, request.get('cardType', 'normal'), request.get('screenshot'))
                     if action == 'confirm-choice' else self.cancel_choice(job_id))
         with self.lock:
+            if action == 'playback-history':
+                # Native diagnostics align saved audio without attaching to the browser tab.
+                session = request.get('session')
+                if session is None:
+                    session = max(self.history, key=lambda key: self.history[key][-1]['wall'], default=None)
+                if session is not None and not isinstance(session, str):
+                    raise ValueError('Invalid playback session.')
+                return {'session': session, 'samples': list(self.history.get(session, ()))}
             if action == 'job-status':
                 job_id = request.get('id')
                 if not isinstance(job_id, str) or not re.fullmatch(r'[a-f0-9-]{36}', job_id):
