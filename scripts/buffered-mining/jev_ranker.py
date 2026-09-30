@@ -26,14 +26,14 @@ PROVIDERS = {
 
 
 def respects_reading_guide(sentence, word):
-    # Only constrain a complete headword, not a pronunciation guide on an
-    # inflected stem. Repeated words can have more than one annotated reading.
-    if word['surface'] != word['term']:
-        return True
-    readings = {normalized_surface(reading) for surface, reading in
-                re.findall(r'([一-龯々]+)[（(]([ぁ-ゖァ-ヶー]+)[）)]', sentence)
-                if surface == word['surface']}
-    return not readings or normalized_surface(word['reading']) in readings
+    # A guide on a stem constrains the reading prefix, not the whole inflected
+    # word: 汚(けが)された → けがす, never よごす. Only align shared written prefixes.
+    guides = [(surface, normalized_surface(reading)) for surface, reading in
+              re.findall(r'([一-龯々]+)[（(]([ぁ-ゖァ-ヶー]+)[）)]', sentence)
+              if word['surface'].startswith(surface) and word['term'].startswith(surface)]
+    reading = normalized_surface(word['reading'])
+    return not guides or any(reading == guide if surface == word['term'] else reading.startswith(guide)
+                             for surface, guide in guides)
 
 
 def boundary_contexts(sentence, surface):

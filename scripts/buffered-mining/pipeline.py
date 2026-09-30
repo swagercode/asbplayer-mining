@@ -15,6 +15,10 @@ import unicodedata
 import urllib.request
 
 
+# Inline kana after kanji are pronunciation guides, including partial stems.
+READING_GUIDE = r'(?<=[一-龯々〆〇])[（(][ぁ-ゖァ-ヶー 　]+[）)]'
+
+
 def post(url, body, timeout=60):
     request = urllib.request.Request(url, json.dumps(body).encode(), {'Content-Type': 'application/json'})
     with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -44,6 +48,8 @@ def normalized_surface(text):
 def subtitle_dialogue(sentence):
     """Separate non-spoken annotations and explicit speaker identities from dialogue."""
     speakers = set()
+    # Keep the kanji attached to its okurigana: 賢(さか)しげ → 賢しげ.
+    sentence = re.sub(READING_GUIDE, '', sentence)
 
     def annotation(match):
         label = match[1].strip()
@@ -309,13 +315,17 @@ class Pipeline:
         if values is None:
             raise ValueError('Yomitan has no card entry matching the selected word and reading.')
         sentence = job['subtitle']['text']
-        position = sentence.find(word['surface'])
-        if position < 0:
+        # Scanner surfaces omit ruby; preserve it inside the original card's cloze.
+        surface_pattern = ''.join(re.escape(char) + '(?:' + READING_GUIDE + ')?'
+                                  for char in word['surface'])
+        match = re.search(surface_pattern, sentence) if surface_pattern else None
+        if match is None:
             raise ValueError('The chosen word is not in the frozen subtitle.')
+        start, end = match.span()
         screenshot = '<img src="asb_' + job['id'] + '.jpg">' if job.get('hasScreenshot') else ''
-        values.update({'sentence': html.escape(sentence), 'cloze-prefix': html.escape(sentence[:position]),
-                       'cloze-body': html.escape(word['surface']),
-                       'cloze-suffix': html.escape(sentence[position + len(word['surface']):]),
+        values.update({'sentence': html.escape(sentence), 'cloze-prefix': html.escape(sentence[:start]),
+                       'cloze-body': html.escape(sentence[start:end]),
+                       'cloze-suffix': html.escape(sentence[end:]),
                        'document-title': html.escape(job.get('title', '')), 'url': html.escape(job.get('url', '')),
                        'popup-selection-text': '', 'clipboard-text': '', 'clipboard-image': '', 'screenshot': screenshot})
         fields = {name: re.sub(r'\{([^{}]+)\}', lambda m: values.get(m[1], ''), spec['value'])

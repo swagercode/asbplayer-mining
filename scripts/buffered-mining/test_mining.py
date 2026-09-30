@@ -543,8 +543,48 @@ class CardTests(unittest.TestCase):
     def test_annotations_do_not_turn_reading_guides_into_names(self):
         dialogue, speakers = subtitle_dialogue('（ラム・レム）呪いは解呪(かいじゅ)された。（スバルの声）本当か')
         self.assertEqual(speakers, {'らむ・れむ', 'らむ', 'れむ', 'すばる'})
-        self.assertIn('解呪 された', dialogue)
+        self.assertIn('解呪された', dialogue)
         self.assertNotIn('かいじゅ', speakers)
+
+    def test_inline_readings_preserve_words_and_okurigana_before_scanning(self):
+        pipeline = Pipeline({})
+        pipeline.yomi = Mock(return_value=[])
+        for annotated, spoken in [
+            ('そんな賢(さか)しげに', 'そんな賢しげに'),
+            ('汚（けが）した服', '汚した服'),
+            ('躊(ちゅう)躇(ちょ)する', '躊躇する'),
+            ('因縁（インネン）をつける', '因縁をつける'),
+            ('輩(やから)は', '輩は'),
+        ]:
+            with self.subTest(annotated=annotated):
+                pipeline.candidates(annotated, allow_empty=True)
+                self.assertEqual(pipeline.yomi.call_args.args[1]['text'], spoken)
+                self.assertEqual(subtitle_dialogue(annotated)[1], set())
+        dialogue, speakers = subtitle_dialogue('（ラム）賢(さか)しげに（足音）歩く')
+        self.assertEqual(dialogue, ' 賢しげに 歩く')
+        self.assertIn('らむ', speakers)
+
+    def test_card_cloze_preserves_reading_guides_inside_scanned_word(self):
+        pipeline = Pipeline({'sentence_field': 'sentence', 'audio_field': 'audio', 'deck': 'Mining'})
+        card_format = {'model': 'Test', 'fields': {
+            'word': {'value': '{expression}'}, 'body': {'value': '{cloze-body}'},
+            'prefix': {'value': '{cloze-prefix}'}, 'suffix': {'value': '{cloze-suffix}'}}}
+        pipeline.anki = Mock(side_effect=lambda action, **_: (
+            ['Mining'] if action == 'deckNames' else ['word', 'body', 'prefix', 'suffix', 'sentence', 'audio']))
+        for sentence, surface, term, reading, expected in [
+            ('そんな賢(さか)しげに', '賢しげ', '賢しい', 'さかしい', '賢(さか)しげ'),
+            ('まだ躊(ちゅう)躇(ちょ)する', '躊躇する', '躊躇', 'ちゅうちょ', '躊(ちゅう)躇(ちょ)する'),
+            ('あの輩（やから）は', '輩', '輩', 'やから', '輩（やから）'),
+        ]:
+            with self.subTest(sentence=sentence):
+                pipeline.yomi = Mock(return_value={'fields': [{'expression': term, 'reading': reading}]})
+                note, _ = pipeline.build({'id': 'ruby', 'subtitle': {'text': sentence}},
+                                         {'surface': surface, 'term': term, 'reading': reading}, card_format)
+                fields = note['fields']
+                self.assertEqual(fields['body'], expected)
+                self.assertEqual(fields['prefix'] + fields['body'] + fields['suffix'], sentence)
+                self.assertEqual(fields['sentence'], sentence.replace(expected, '<b>' + expected + '</b>'))
+                self.assertEqual(fields['audio'], '[sound:asb_ruby.mp3]')
 
     def test_katakana_vocabulary_is_not_globally_blacklisted(self):
         pipeline = Pipeline({})

@@ -102,6 +102,17 @@ class RankedJevTests(unittest.TestCase):
         self.assertTrue(respects_reading_guide('汚(けが)した',
                         {'surface': '汚', 'term': '汚す', 'reading': 'けがす'}))
 
+    def test_partial_stem_reading_guides_reject_other_pronunciations(self):
+        for sentence, surface, term, correct, wrong in [
+            ('汚(けが)された名誉', '汚された', '汚す', 'けがす', 'よごす'),
+            ('賢(さか)しげに振る舞う', '賢しげ', '賢しい', 'さかしい', 'かしこい'),
+            ('拓（ひら）かれた道', '拓かれた', '拓く', 'ひらく', 'たく'),
+        ]:
+            with self.subTest(sentence=sentence):
+                word = {'surface': surface, 'term': term}
+                self.assertTrue(respects_reading_guide(sentence, dict(word, reading=correct)))
+                self.assertFalse(respects_reading_guide(sentence, dict(word, reading=wrong)))
+
     def test_strong_alternative_survives_a_dominant_winner_without_adding_every_word(self):
         words = [{'surface': word, 'term': word, 'reading': reading} for word, reading in
                  [('栄誉', 'えいよ'), ('賢人', 'けんじん'), ('皆様', 'みなさま')]]
