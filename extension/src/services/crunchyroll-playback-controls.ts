@@ -7,6 +7,10 @@ export class CrunchyrollPlaybackControls {
         // full player overlay: it also contains buffering, errors and mining UI.
         const controls = ':is([data-testid="top-controls-autohide"], [data-testid="bottom-controls-autohide"])';
         this.style.textContent = `
+            [data-asbplayer-playback-controls="playing"],
+            [data-asbplayer-playback-controls="playing"] * {
+                cursor: none !important;
+            }
             [data-asbplayer-playback-controls] ${controls} { transition: none !important; }
             [data-asbplayer-playback-controls="playing"] ${controls},
             [data-asbplayer-playback-controls="playing"] [data-testid="top-gradient-background"],
