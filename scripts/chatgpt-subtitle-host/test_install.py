@@ -7,6 +7,23 @@ import install
 
 
 class InstallTests(unittest.TestCase):
+    def test_codex_discovery_preserves_custom_paths_and_repairs_moved_app(self):
+        bundled = '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex'
+        custom = '/custom/codex'
+        cli = '/opt/bin/codex'
+        for available, configured, expected in (
+                ({bundled, custom, cli}, custom, custom),
+                ({bundled, cli}, '/Applications/ChatGPT.app/Contents/Resources/codex', bundled),
+                ({cli}, None, cli)):
+            with self.subTest(configured=configured, expected=expected), \
+                    patch.object(Path, 'is_file', lambda path: str(path) in available), \
+                    patch.object(install.shutil, 'which', return_value=cli):
+                self.assertEqual(install.find_codex(configured), expected)
+        with patch.object(Path, 'is_file', return_value=False), \
+                patch.object(install.shutil, 'which', return_value=None):
+            with self.assertRaises(ValueError):
+                install.find_codex()
+
     def test_chrome_id_uses_manifest_key(self):
         with tempfile.TemporaryDirectory() as directory:
             manifest = Path(directory) / 'manifest.json'

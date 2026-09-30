@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import threading
 
-MODEL = 'gpt-6-sol'
+MODEL = 'gpt-6.1-sol'
 INSTRUCTIONS = '''Explain the supplied Japanese subtitle like a helpful Japanese tutor, entirely in Japanese.
 The learner has already looked up the words but still cannot put the sentence together.
 The sentence field is the ONLY sentence to explain. context.before and context.after are neighboring

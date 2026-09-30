@@ -50,13 +50,22 @@ def write_if_changed(path, content, mode=0o600):
     path.chmod(mode)
 
 
-def install(browser, chrome_manifest, home=None):
-    # Validate before changing the installed host or its registrations.
-    chrome_id = chrome_extension_id(chrome_manifest) if browser in ('chrome', 'all') else None
-    paths = ['/Applications/ChatGPT.app/Contents/Resources/codex', '/Applications/Codex.app/Contents/Resources/codex', shutil.which('codex')]
+def find_codex(configured=None):
+    paths = [configured]
+    for app in ('ChatGPT', 'Codex'):
+        resources = f'/Applications/{app}.app/Contents/Resources'
+        paths.extend((resources + '/codex-cli/bin/codex', resources + '/codex'))
+    paths.append(shutil.which('codex'))
     codex = next((p for p in paths if p and Path(p).is_file()), None)
     if codex is None:
         raise ValueError('Install Codex and run codex login first.')
+    return codex
+
+
+def install(browser, chrome_manifest, home=None):
+    # Validate before changing the installed host or its registrations.
+    chrome_id = chrome_extension_id(chrome_manifest) if browser in ('chrome', 'all') else None
+    codex = find_codex()
     support = (home or Path.home()) / 'Library/Application Support'
     target = support / 'asbplayer-extension/chatgpt-host'
     target.mkdir(parents=True, exist_ok=True)

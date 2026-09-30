@@ -51,7 +51,7 @@ node .yarn/releases/yarn-3.2.0.cjs workspace @project/extension build
 
 Open `chrome://extensions`, enable Developer mode, and load `extension/.output/chrome-mv3` with **Load unpacked**.
 
-The mining installer assumes Codex is at `/Applications/ChatGPT.app/Contents/Resources/codex`. If yours is elsewhere, change that path in `scripts/buffered-mining/install.py` first.
+The installers look for Codex inside the ChatGPT or Codex app, then on your PATH. Reinstalling repairs a missing Codex path while keeping a working custom path.
 
 Install the local bridges:
 

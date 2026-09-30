@@ -37,8 +37,8 @@ def install(args):
                   'anki_url': 'http://127.0.0.1:8765', 'yomitan_url': 'http://127.0.0.1:19633',
                   'deck': 'Mining', 'card_format': 'Expression', 'sentence_field': 'sentence',
                   'audio_field': 'sentenceAudio', 'image_field': 'picture', 'source_field': 'miscInfo',
-                  'ffmpeg': shutil.which('ffmpeg'), 'ffprobe': shutil.which('ffprobe'),
-                  'codex': '/Applications/ChatGPT.app/Contents/Resources/codex'}
+                  'ffmpeg': shutil.which('ffmpeg'), 'ffprobe': shutil.which('ffprobe')}
+    config['codex'] = subtitle_installer.find_codex(config.get('codex'))
     config.setdefault('word_selector', 'jev-ranked')
     config.setdefault('jev_confidence_threshold', .05)
     config.setdefault('jev_alternative_confidence_threshold', .7)

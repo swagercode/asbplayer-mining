@@ -10,7 +10,7 @@ from sentence_explanation import Explanations, generate, normalize_context
 class SentenceExplanationTests(unittest.TestCase):
     def test_uses_sol_light_chatgpt_fast_and_plain_text_schema(self):
         def run(args, **kwargs):
-            self.assertEqual(args[args.index('--model') + 1], 'gpt-6-sol')
+            self.assertEqual(args[args.index('--model') + 1], 'gpt-6.1-sol')
             for setting in ('model_reasoning_effort="low"', 'service_tier="fast"',
                             'forced_login_method="chatgpt"', 'features.shell_tool=false'):
                 self.assertIn(setting, args)
@@ -27,7 +27,7 @@ class SentenceExplanationTests(unittest.TestCase):
         with patch('sentence_explanation.subprocess.run', side_effect=run), patch.dict('os.environ', {'OPENAI_API_KEY': 'unused'}):
             self.assertEqual(generate({'codex': '/test/codex'}, '品がないのう',
                                       {'before': ['言いがかりか'], 'after': ['まったくじゃ']}),
-                             {'text': 'Explanation', 'model': 'gpt-6-sol'})
+                             {'text': 'Explanation', 'model': 'gpt-6.1-sol'})
 
     def test_pending_work_is_deduplicated_and_does_not_block_status(self):
         queue = Explanations({})
