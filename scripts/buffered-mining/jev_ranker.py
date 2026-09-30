@@ -184,6 +184,12 @@ def options_from(sentence, candidates, raw, surfaces, threshold,
     if not isinstance(probabilities, dict) or not probabilities:
         raise ValueError('Jev did not return candidate probabilities.')
     alternatives = independent_scores(sentence, candidates, answers, surfaces)
+    # A global ranking can assign residual probability to a dictionary homophone
+    # that the contextual check confidently rejected. Honor that rejection for
+    # every option, without confusing uncertainty between valid readings with
+    # evidence that the whole word is absent.
+    excluded |= {normalized_surface(surface) for i, surface in enumerate(surfaces)
+                 if probability(answers[f'word_{i}']['probabilities'].get('-1', 0)) > WORD_CONFIDENCE_THRESHOLD}
     selection_scores = {}
     for key, value in probabilities.items():
         confidence = probability(value)

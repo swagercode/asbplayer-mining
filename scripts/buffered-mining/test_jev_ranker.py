@@ -139,6 +139,40 @@ class RankedJevTests(unittest.TestCase):
         options = options_from('', self.words, self.raw, self.surfaces, .05)
         self.assertEqual([(o['reading'], o['confidence']) for o in options], [('ろうりょく', .9)])
 
+    def test_global_ranking_cannot_restore_a_contextually_rejected_homophone(self):
+        words = [{'surface': 'そうすれば', 'term': '奏する', 'reading': 'そうする'},
+                 {'surface': '丸く', 'term': '丸い', 'reading': 'まるい'},
+                 {'surface': '収まる', 'term': '収まる', 'reading': 'おさまる'}]
+        surfaces = [w['surface'] for w in words]
+        raw = {'answers': {'selection': {'probabilities': {'0': .07, '1': .46, '2': .36, '-2': .06}}}}
+        self.alternatives(raw, words, surfaces)
+        for i in range(3):
+            raw['answers'][f'name_{i}'] = {'noul': .01}
+            raw['answers'][f'boundary_{i}'] = {'noul': .9}
+        raw['answers']['word_0']['probabilities'] = {'0': .02, '-1': .98}
+        for score in (.07, .99):
+            with self.subTest(selection_score=score):
+                raw['answers']['selection']['probabilities']['0'] = score
+                options = options_from('そうすれば全部 丸く収まる', words, raw, surfaces, .05)
+                self.assertEqual([o['word'] for o in options], ['丸い', '収まる'])
+        # The dictionary word remains available where its meaning really occurs.
+        words[0]['surface'] = '奏すれば'
+        surfaces[0] = '奏すれば'
+        raw['answers']['word_0']['probabilities'] = {'0': .98, '-1': .02}
+        options = options_from('この策が功を奏すれば 丸く収まる', words, raw, surfaces, .05)
+        self.assertEqual(options[0]['word'], '奏する')
+
+    def test_global_ranking_respects_rejection_but_not_uncertainty_between_valid_readings(self):
+        self.raw['answers']['selection']['probabilities'] = {'1': .99}
+        for rejection in (.61, .8, .98):
+            self.raw['answers']['word_1']['probabilities'] = {'1': 1 - rejection, '-1': rejection}
+            self.assertEqual(options_from('', self.words, self.raw, self.surfaces, .05), [])
+        for scores in ({'1': .55, '2': .44, '-1': .01}, {'1': .59, '2': .41, '-1': 0}):
+            with self.subTest(scores=scores):
+                self.raw['answers']['word_1']['probabilities'] = scores
+                options = options_from('', self.words, self.raw, self.surfaces, .05)
+                self.assertEqual([o['reading'] for o in options], ['ろうりょく'])
+
     def test_independent_alternatives_do_not_restore_names_or_weak_boundaries(self):
         self.raw['answers']['selection']['probabilities'] = {'-1': 1}
         self.raw['answers']['useful_0']['noul'] = 1
