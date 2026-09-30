@@ -96,12 +96,55 @@ class Pipeline:
             raise ValueError(result['error'])
         return result['result']
 
+    def overlapping_tokens(self, dialogue, parsed):
+        """Recover words whose start was consumed by an earlier greedy match."""
+        tokens = [parts for line in parsed for parts in line['content']]
+        surfaces = [''.join(part['text'] for part in parts) for parts in tokens]
+        # Offsets must refer to the exact, annotation-free text sent to Yomitan.
+        if ''.join(surfaces) != dialogue:
+            return []
+        probes = {}
+        end = 0
+        for parts, surface in zip(tokens, surfaces):
+            start, end = end, end + len(surface)
+            if not any(part.get('headwords') for part in parts):
+                continue  # The scanner already tried every position in an unmatched span.
+            for offset in range(start + 1, end):
+                tail = re.match('[一-龯々〆〇ぁ-ゖァ-ヶー]+', dialogue[offset:offset + 30])
+                if tail and len(tail[0]) > end - offset:
+                    # Only crossing matches can add a missed word; substrings of
+                    # an intact token must not flood the ranker with components.
+                    probes.setdefault((tail[0], end - offset), []).append(offset)
+        probes = list(probes.items())[:128]
+        if not probes:
+            return []
+        # Yomitan resolves the array concurrently in one local request.
+        parsed = self.yomi('tokenize', {'text': [text for (text, _), _ in probes],
+                                        'scanLength': 30, 'parser': 'scanning-parser'})
+        recovered = []
+        for line in parsed:
+            index = line.get('index')
+            if type(index) is not int or not 0 <= index < len(probes) or not line['content']:
+                continue
+            (text, consumed), offsets = probes[index]
+            parts = line['content'][0]
+            surface = ''.join(part['text'] for part in parts)
+            if (len(surface) > consumed and text.startswith(surface)
+                    and any(part.get('headwords') for part in parts)):
+                recovered.extend((offset, offset + len(surface), parts) for offset in offsets)
+        # Apply the same whole-token rule to the new matches themselves. A
+        # recovered compound must not introduce its own internal fragments.
+        return [parts for start, end, parts in recovered
+                if not any(a <= start and end <= b and (a < start or end < b)
+                           for a, b, _ in recovered)]
+
     def candidates(self, sentence, allow_empty=False):
         dialogue, speakers = subtitle_dialogue(sentence)
         parsed = self.yomi('tokenize', {'text': dialogue, 'scanLength': 30, 'parser': 'scanning-parser'})
         candidates = {}
-        for line in parsed:
-            for parts in line['content']:
+
+        def add_tokens(tokens, limit=None):
+            for parts in tokens:
                 surface = ''.join(part['text'] for part in parts)
                 if normalized_surface(surface) in speakers:
                     continue
@@ -111,6 +154,8 @@ class Pipeline:
                             key = (surface, word['term'], word['reading'])
                             if not re.search('[一-龯ぁ-んァ-ヶ]', word['term']):
                                 continue
+                            if limit is not None and len(candidates) >= limit and key not in candidates:
+                                continue
                             candidate = candidates.setdefault(key, {
                                 'surface': surface, 'term': word['term'], 'reading': word['reading'],
                                 'matchSources': [], '_frequencies': []})
@@ -119,6 +164,11 @@ class Pipeline:
                                 match = source.get('matchSource')
                                 if match in ('term', 'reading') and match not in candidate['matchSources']:
                                     candidate['matchSources'].append(match)
+
+        add_tokens(parts for line in parsed for parts in line['content'])
+        # Preserve original candidates and leave room for OpenJEV's two reserved choices.
+        if len(candidates) < 253:
+            add_tokens(self.overlapping_tokens(dialogue, parsed), limit=253)
         if not candidates and not allow_empty:
             raise ValueError('Yomitan could not find a word in this subtitle.')
         result = list(candidates.values())[:300]
