@@ -274,6 +274,10 @@ class Pipeline:
         reading = normalized_surface(word['reading'])
         for offset in range(0, len(ids), 100):
             for note in self.anki('notesInfo', notes=ids[offset:offset + 100]):
+                # Listening practice in other contexts must not block a first normal card.
+                audio_field = note['fields'].get(self.config.get('audio_card_field', 'audioCard'), {})
+                if plain_field(audio_field.get('value', '')):
+                    continue
                 if word_tag(word) in note.get('tags', []):
                     return note['noteId']
                 values = note['fields']
@@ -357,7 +361,9 @@ class Pipeline:
                 'tags': ['asbplayer', 'jev' if job.get('requiresChoice') else 'luna',
                          *(['luna_generated'] if generated else []),
                          'asb_job_' + job['id'].replace('-', ''), word_tag(word)],
-                'options': {'allowDuplicate': False}}, result
+                # Anki checks only the first field and cannot distinguish card modes.
+                # Normal-word duplicates are checked under export_lock below.
+                'options': {'allowDuplicate': True}}, result
 
     def export(self, job, word):
         with self.export_lock:
@@ -370,9 +376,10 @@ class Pipeline:
         if existing:
             return existing[0]
         card_format = self.card_format()
-        existing = self.mined_note(word, card_format)
-        if existing is not None:
-            raise AlreadyMined(existing)
+        if job.get('cardType') != 'audio':
+            existing = self.mined_note(word, card_format)
+            if existing is not None:
+                raise AlreadyMined(existing)
         note, media = self.build(job, word, card_format)
         for item in media.get('dictionaryMedia', []) + media.get('audioMedia', []):
             self.anki('storeMediaFile', filename=item['ankiFilename'], data=item['content'])

@@ -528,6 +528,7 @@ class CardTests(unittest.TestCase):
                 self.assertEqual(note['fields']['definition'], 'effort')
                 self.assertEqual(note['fields']['sentence'], '<b>労力</b>に見合った成果')
                 self.assertEqual(note['deckName'], 'Mining')
+                self.assertTrue(note['options']['allowDuplicate'])
 
     def test_speaker_names_are_removed_before_frequency_ranking(self):
         pipeline = Pipeline({})

@@ -32,18 +32,55 @@ class DuplicateTests(unittest.TestCase):
             [n['noteId'] for n in notes] if action == 'findNotes' else notes))
         return pipeline
 
-    def test_existing_manual_note_skips_both_card_types_before_media_or_build(self):
-        for card_type in ('normal', 'audio'):
-            with self.subTest(card_type=card_type):
-                pipeline = self.pipeline([note('<b>労力</b>', 'ろうりょく')])
-                with self.assertRaises(AlreadyMined) as duplicate:
-                    pipeline.export({'id': 'new', 'cardType': card_type}, WORD)
-                self.assertEqual(duplicate.exception.note_id, 123)
-                pipeline.build.assert_not_called()
-                self.assertTrue(all(c.args[0] in ('findNotes', 'notesInfo') for c in pipeline.anki.call_args_list))
-                query = pipeline.anki.call_args_list[1].kwargs['query']
-                self.assertNotIn('deck:', query)
-                self.assertNotIn('note:', query)
+    def test_existing_manual_normal_note_skips_before_media_or_build(self):
+        pipeline = self.pipeline([note('<b>労力</b>', 'ろうりょく')])
+        with self.assertRaises(AlreadyMined) as duplicate:
+            pipeline.export({'id': 'new', 'cardType': 'normal'}, WORD)
+        self.assertEqual(duplicate.exception.note_id, 123)
+        pipeline.build.assert_not_called()
+        self.assertTrue(all(c.args[0] in ('findNotes', 'notesInfo') for c in pipeline.anki.call_args_list))
+        query = pipeline.anki.call_args_list[1].kwargs['query']
+        self.assertNotIn('deck:', query)
+        self.assertNotIn('note:', query)
+
+    def test_audio_notes_do_not_block_a_first_normal_card(self):
+        for audio_field in ('audioCard', 'listening'):
+            with self.subTest(audio_field=audio_field):
+                audio = note('労力', 'ろうりょく', tags=[word_tag(WORD)])
+                audio['fields'][audio_field] = {'value': '1'}
+                pipeline = self.pipeline([audio])
+                pipeline.config['audio_card_field'] = audio_field
+                self.assertIsNone(pipeline.mined_note(WORD))
+                pipeline = self.pipeline([audio, note('労力', 'ろうりょく', noteId=456)])
+                pipeline.config['audio_card_field'] = audio_field
+                self.assertEqual(pipeline.mined_note(WORD), 456)
+
+    def test_audio_jobs_skip_word_checks_but_retry_does_not_add_a_second_note(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, 'sentence.mp3').write_bytes(b'audio')
+            pipeline = self.pipeline([note('労力', 'ろうりょく')])
+            pipeline.mined_note = Mock(side_effect=AssertionError('Audio must not check the word'))
+            pipeline.build = Mock(side_effect=lambda job, *_: (
+                {'tags': ['asb_job_' + job['id']], 'options': {'allowDuplicate': True}}, {}))
+            saved = {}
+
+            def anki(action, **params):
+                if action == 'findNotes':
+                    self.assertTrue(params['query'].startswith('tag:asb_job_'))
+                    return [saved[params['query'][4:]]] if params['query'][4:] in saved else []
+                if action == 'addNote':
+                    tag = params['note']['tags'][0]
+                    saved[tag] = len(saved) + 1
+                    return saved[tag]
+            pipeline.anki.side_effect = anki
+            first = {'id': 'first', 'directory': directory, 'cardType': 'audio'}
+            second = dict(first, id='second')
+            self.assertEqual(pipeline.export(first, WORD), 1)
+            self.assertEqual(pipeline.export(second, WORD), 2)
+            self.assertEqual(pipeline.export(first, WORD), 1)
+            self.assertEqual(pipeline.build.call_count, 2)
+            pipeline.mined_note.assert_not_called()
+            self.assertEqual(sum(c.args[0] == 'addNote' for c in pipeline.anki.call_args_list), 2)
 
     def test_partial_matches_and_different_readings_are_not_duplicates(self):
         pipeline = self.pipeline([note('労力不足', 'ろうりょくぶそく'), note('労力', 'べつのよみ')])
