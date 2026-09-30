@@ -122,10 +122,23 @@ export class YomitanMiningReview implements MiningReviewView {
         this.keys = keys;
         if (!this.panel.hasAttribute('data-asbplayer-mining-choices')) this.refreshStatus();
         this.choices.querySelectorAll('button').forEach((button, i) => {
-            const label = this.keys[miningChoiceKeyBindNames[i]].keys.toUpperCase();
+            const label = this.choiceLabel(i);
             button.firstElementChild!.textContent = label;
             button.setAttribute('aria-label', `${label ? label + ': ' : ''}${button.lastElementChild!.textContent}`);
         });
+    }
+
+    private choiceLabel(index: number) {
+        // The Micro's keyboard-mode D-pad sends C/F/D/E clockwise from up.
+        // Recognize its complete mining layout so ordinary custom shortcuts keep their key labels.
+        const microLayout =
+            this.keys.bufferedMiningNormal.keys.toUpperCase() === 'H' &&
+            this.keys.bufferedMiningAudio.keys.toUpperCase() === 'G' &&
+            this.keys.bufferedMiningCancel.keys.toUpperCase() === 'J' &&
+            ['C', 'F', 'D', 'E'].every((key, i) => this.keys[miningChoiceKeyBindNames[i]].keys.toUpperCase() === key);
+        return microLayout && index < 4
+            ? ['↑', '→', '↓', '←'][index]
+            : this.keys[miningChoiceKeyBindNames[index]].keys.toUpperCase();
     }
 
     private refreshStatus() {
@@ -177,7 +190,7 @@ export class YomitanMiningReview implements MiningReviewView {
             button.setAttribute('aria-label', `${i + 1}: ${option.word}`);
             const number = document.createElement('span');
             number.style.cssText = 'font:600 24px/1.4 system-ui;color:#ddd;';
-            number.textContent = this.keys[miningChoiceKeyBindNames[i]].keys.toUpperCase();
+            number.textContent = this.choiceLabel(i);
             const word = document.createElement('span');
             word.style.cssText = 'font:500 clamp(36px,4vw,64px)/1.4 sans-serif;white-space:nowrap;';
             word.textContent = option.word;
