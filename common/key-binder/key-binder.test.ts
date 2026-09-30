@@ -2,6 +2,7 @@ import hotkeys from 'hotkeys-js';
 import { DefaultKeyBinder } from '@project/common/key-binder/key-binder';
 import type { SubtitleModel } from '@project/common';
 import type { KeyBindSet } from '@project/common/settings';
+import { bindPriorityNavigationKeys } from '@project/common/key-binder/single-key-shortcut';
 
 describe('fullscreen subtitle navigation', () => {
     const subtitles: SubtitleModel[] = [
@@ -135,5 +136,88 @@ describe('fullscreen subtitle navigation', () => {
         key('keydown', 'w');
         key('keydown', 's');
         expect(onSeek).not.toHaveBeenCalled();
+    });
+});
+
+describe('fullscreen play/pause', () => {
+    const fire = (type: string, target: EventTarget = document.body, init: KeyboardEventInit = {}) => {
+        const event = new KeyboardEvent(type, {
+            key: 'l',
+            code: 'KeyL',
+            keyCode: 76,
+            bubbles: true,
+            composed: true,
+            cancelable: true,
+            ...init,
+        });
+        target.dispatchEvent(event);
+        return event;
+    };
+    let cleanup: (() => void)[];
+    let toggle: jest.Mock;
+    let site: jest.Mock;
+    let disabled: boolean;
+
+    beforeEach(() => {
+        disabled = false;
+        cleanup = [bindPriorityNavigationKeys(['l'], () => !disabled)];
+        // Crunchyroll's capture listener is registered before the video binding.
+        site = jest.fn((event: Event) => event.stopImmediatePropagation());
+        for (const type of ['keydown', 'keypress', 'keyup']) window.addEventListener(type, site, true);
+        toggle = jest.fn((event: KeyboardEvent) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        });
+        const binder = new DefaultKeyBinder({ togglePlay: { keys: 'L' } } as KeyBindSet);
+        cleanup.push(binder.bindPlay(toggle, () => disabled, true));
+    });
+
+    afterEach(() => {
+        cleanup.forEach((unbind) => unbind());
+        for (const type of ['keydown', 'keypress', 'keyup']) window.removeEventListener(type, site, true);
+        document.body.replaceChildren();
+    });
+
+    it('toggles once per controller press and consumes held repeats before the site', () => {
+        for (let press = 0; press < 2; press++) {
+            expect(fire('keydown').defaultPrevented).toBe(true);
+            for (let repeat = 0; repeat < 4; repeat++) {
+                expect(fire('keydown', document.body, { repeat: true }).defaultPrevented).toBe(true);
+            }
+            expect(fire('keypress').defaultPrevented).toBe(true);
+            expect(fire('keyup').defaultPrevented).toBe(true);
+        }
+        expect(toggle).toHaveBeenCalledTimes(2);
+        expect(site).not.toHaveBeenCalled();
+    });
+
+    it('works on a fullscreen timeline or button after a lost key release', () => {
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        const button = document.createElement('button');
+        document.body.append(slider, button);
+        fire('keydown', slider);
+        window.dispatchEvent(new Event('blur'));
+        document.dispatchEvent(new Event('fullscreenchange'));
+        fire('keydown', button);
+        fire('keyup', button);
+        expect(toggle).toHaveBeenCalledTimes(2);
+        expect(site).not.toHaveBeenCalled();
+    });
+
+    it('leaves typing, modifiers and disabled shortcuts alone', () => {
+        const input = document.createElement('input');
+        document.body.append(input);
+        expect(fire('keydown', input).defaultPrevented).toBe(false);
+        expect(fire('keydown', document.body, { metaKey: true }).defaultPrevented).toBe(false);
+        disabled = true;
+        expect(fire('keydown').defaultPrevented).toBe(false);
+        expect(toggle).not.toHaveBeenCalled();
+    });
+
+    it('removes the listener when settings or the video binding change', () => {
+        cleanup[1]();
+        fire('keydown');
+        expect(toggle).not.toHaveBeenCalled();
     });
 });

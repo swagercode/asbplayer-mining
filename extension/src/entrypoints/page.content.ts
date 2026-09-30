@@ -37,6 +37,7 @@ export default defineContentScript({
             cleanup.push(
                 bindPriorityNavigationKeys(
                     () => [
+                        keys.togglePlay.keys,
                         keys.seekToPreviousSubtitle.keys,
                         keys.seekToNextSubtitle.keys,
                         keys.seekToBeginningOfCurrentSubtitle.keys,

@@ -923,11 +923,17 @@ export class DefaultKeyBinder implements KeyBinder {
                 return false;
             }
 
+            // Holding a controller button must not alternate pause/play repeatedly.
+            if (event.repeat) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                return true;
+            }
             onPlay(event);
             return true;
         };
 
-        return this._bind(shortcut, capture, handler);
+        return this._bindNavigation(shortcut, capture, handler);
     }
 
     bindAutoPause(onAutoPause: (event: KeyboardEvent) => void, disabledGetter: () => boolean, capture = false) {
