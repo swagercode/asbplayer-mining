@@ -1,4 +1,5 @@
 import type { KeyBindSet } from '@project/common/settings';
+import { keyBindKeys } from '@project/common/settings';
 
 /** Plain text only: model output never becomes HTML in the player. */
 export class SentenceExplanationView {
@@ -46,7 +47,7 @@ export class SentenceExplanationView {
     };
 
     setKeyBindSet(keys: KeyBindSet) {
-        const shortcut = keys.explainSentence.keys.toUpperCase();
+        const shortcut = keyBindKeys(keys.explainSentence).join(' / ').toUpperCase();
         this.closeButton.textContent = shortcut ? `${shortcut} · Close explanation` : 'Close explanation';
     }
 

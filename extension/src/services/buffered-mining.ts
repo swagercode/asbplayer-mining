@@ -1,7 +1,8 @@
-import { defaultSettings } from '@project/common/settings';
+import { defaultSettings, keyBindKeys, miningChoiceKeyBindNames } from '@project/common/settings';
+import { matchesPlaybackShortcut } from '@project/common/key-binder/single-key-shortcut';
 import type { KeyBindSet } from '@project/common/settings';
-import { SentenceExplanationView } from './sentence-explanation';
-import { sentenceExplanationContext } from './sentence-explanation-context';
+import { SentenceExplanationView } from '@project/extension/src/services/sentence-explanation';
+import { sentenceExplanationContext } from '@project/extension/src/services/sentence-explanation-context';
 import type { SubtitleModel } from '@project/common';
 import { v4 as uuid } from 'uuid';
 import { bindBufferedMiningShortcut } from '@project/extension/src/services/buffered-mining-shortcut';
@@ -158,7 +159,7 @@ export class BufferedMiningController {
                 !this.explanation &&
                 this.video.isConnected &&
                 (this.review !== undefined || this.subtitles().length > 0),
-            () => this.keys.bufferedMiningNormal.keys
+            () => keyBindKeys(this.keys.bufferedMiningNormal)
         );
         this.unbindCancelShortcut?.();
         this.unbindAudioShortcut?.();
@@ -170,22 +171,33 @@ export class BufferedMiningController {
                 !this.explanation &&
                 this.video.isConnected &&
                 (this.review !== undefined || this.subtitles().length > 0),
-            () => this.keys.bufferedMiningAudio.keys
+            () => keyBindKeys(this.keys.bufferedMiningAudio)
         );
         this.unbindCancelShortcut = bindBufferedMiningShortcut(
             () => {
                 void (this.explanation ? this.closeExplanation() : this.cancelReview()).catch(() => {});
             },
             () => this.video.isConnected && (this.review !== undefined || this.explanation !== undefined),
-            () => this.keys.bufferedMiningCancel.keys
+            () => keyBindKeys(this.keys.bufferedMiningCancel)
         );
         this.unbindExplainShortcut?.();
         this.unbindExplainShortcut = bindBufferedMiningShortcut(
             () => {
                 void this.explain().catch(() => {});
             },
-            () => this.video.isConnected && (this.explanation !== undefined || this.subtitles().length > 0),
-            () => this.keys.explainSentence.keys
+            (event) =>
+                this.video.isConnected &&
+                (this.explanation !== undefined || this.subtitles().length > 0) &&
+                // The Micro's right D-pad emits F, also the keyboard Explain key.
+                // Let the chooser own that press; R2's distinct key still explains.
+                !(
+                    !this.explanation &&
+                    document.querySelector('[data-asbplayer-mining-review]:not([data-asbplayer-mining-word])') &&
+                    miningChoiceKeyBindNames.some((name) =>
+                        matchesPlaybackShortcut(keyBindKeys(this.keys[name]), event)
+                    )
+                ),
+            () => keyBindKeys(this.keys.explainSentence)
         );
         this.timer = setInterval(this.observe, 1000);
         for (const event of this.events) this.video.addEventListener(event, this.observe);

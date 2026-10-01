@@ -1,7 +1,7 @@
 import type { SubtitleModel } from '@project/common/src/model';
 import hotkeys from 'hotkeys-js';
 import type { KeyBindSet, SeekableTracks, TokenStatus } from '@project/common/settings';
-import { isTrackSeekable } from '@project/common/settings';
+import { isTrackSeekable, keyBindKeys } from '@project/common/settings';
 import { bindSingleKeyShortcut, supportsPlaybackShortcut } from '@project/common/key-binder/single-key-shortcut';
 
 export function adjacentSubtitle(
@@ -445,19 +445,19 @@ export class DefaultKeyBinder implements KeyBinder {
 
             return false;
         };
-        const previousShortcut = this.keyBindSet.seekToPreviousSubtitle.keys;
-        const nextShortcut = this.keyBindSet.seekToNextSubtitle.keys;
+        const previousShortcut = keyBindKeys(this.keyBindSet.seekToPreviousSubtitle);
+        const nextShortcut = keyBindKeys(this.keyBindSet.seekToNextSubtitle);
         const previousHandler = (event: KeyboardEvent) => delegate(event, false);
         const nextHandler = (event: KeyboardEvent) => delegate(event, true);
 
         let unbindPrevious: (() => void) | undefined;
         let unbindNext: (() => void) | undefined;
 
-        if (previousShortcut) {
+        if (previousShortcut.length) {
             unbindPrevious = this._bindNavigation(previousShortcut, capture, previousHandler);
         }
 
-        if (nextShortcut) {
+        if (nextShortcut.length) {
             unbindNext = this._bindNavigation(nextShortcut, capture, nextHandler);
         }
 
@@ -475,9 +475,9 @@ export class DefaultKeyBinder implements KeyBinder {
         seekableTracksGetter: () => SeekableTracks,
         capture = false
     ) {
-        const shortcut = this.keyBindSet.seekToBeginningOfCurrentSubtitle.keys;
+        const shortcut = keyBindKeys(this.keyBindSet.seekToBeginningOfCurrentSubtitle);
 
-        if (!shortcut) {
+        if (!shortcut.length) {
             return () => {};
         }
 
@@ -912,9 +912,9 @@ export class DefaultKeyBinder implements KeyBinder {
     }
 
     bindPlay(onPlay: (event: KeyboardEvent) => void, disabledGetter: () => boolean, capture = false) {
-        const shortcut = this.keyBindSet.togglePlay.keys;
+        const shortcut = keyBindKeys(this.keyBindSet.togglePlay);
 
-        if (!shortcut) {
+        if (!shortcut.length) {
             return () => {};
         }
 
@@ -1163,11 +1163,12 @@ export class DefaultKeyBinder implements KeyBinder {
         return this._bind(shortcut, capture, handler);
     }
 
-    private _bindNavigation(shortcut: string, capture: boolean, handler: (event: KeyboardEvent) => boolean) {
+    private _bindNavigation(shortcut: string[], capture: boolean, handler: (event: KeyboardEvent) => boolean) {
         if (capture && supportsPlaybackShortcut(shortcut)) {
             return bindSingleKeyShortcut(shortcut, handler);
         }
-        return this._bind(shortcut, capture, handler);
+        const unbind = shortcut.map((keys) => this._bind(keys, capture, handler));
+        return () => unbind.forEach((release) => release());
     }
 
     private _bind(shortcut: string, capture: boolean, handler: (event: KeyboardEvent) => boolean) {

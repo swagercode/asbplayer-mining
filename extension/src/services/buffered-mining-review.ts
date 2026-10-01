@@ -1,4 +1,4 @@
-import { defaultSettings, miningChoiceKeyBindNames } from '@project/common/settings';
+import { defaultSettings, hasMicroMiningKeys, keyBindKeys, miningChoiceKeyBindNames } from '@project/common/settings';
 import type { KeyBindSet } from '@project/common/settings';
 import type { SubtitleModel } from '@project/common';
 import { bindSingleKeyShortcut } from '@project/common/key-binder/single-key-shortcut';
@@ -131,21 +131,16 @@ export class YomitanMiningReview implements MiningReviewView {
     private choiceLabel(index: number) {
         // The Micro's keyboard-mode D-pad sends C/F/D/E clockwise from up.
         // Recognize its complete mining layout so ordinary custom shortcuts keep their key labels.
-        const microLayout =
-            this.keys.bufferedMiningNormal.keys.toUpperCase() === 'H' &&
-            this.keys.bufferedMiningAudio.keys.toUpperCase() === 'G' &&
-            this.keys.bufferedMiningCancel.keys.toUpperCase() === 'J' &&
-            ['C', 'F', 'D', 'E'].every((key, i) => this.keys[miningChoiceKeyBindNames[i]].keys.toUpperCase() === key);
-        return microLayout && index < 4
+        return hasMicroMiningKeys(this.keys) && index < 4
             ? ['↑', '→', '↓', '←'][index]
-            : this.keys[miningChoiceKeyBindNames[index]].keys.toUpperCase();
+            : keyBindKeys(this.keys[miningChoiceKeyBindNames[index]]).join(' / ').toUpperCase();
     }
 
     private refreshStatus() {
         const hints = [
-            [this.keys.bufferedMiningAudio.keys, 'audio'],
-            [this.keys.bufferedMiningNormal.keys, 'normal'],
-            [this.keys.bufferedMiningCancel.keys, 'skip'],
+            [keyBindKeys(this.keys.bufferedMiningAudio).join(' / '), 'audio'],
+            [keyBindKeys(this.keys.bufferedMiningNormal).join(' / '), 'normal'],
+            [keyBindKeys(this.keys.bufferedMiningCancel).join(' / '), 'skip'],
         ]
             .filter(([key]) => key)
             .map(([key, action]) => `${key.toUpperCase()} ${action}`);
@@ -203,7 +198,7 @@ export class YomitanMiningReview implements MiningReviewView {
         for (let i = 0; i < 9; i++) {
             this.unbindChoices.push(
                 bindSingleKeyShortcut(
-                    () => this.keys[miningChoiceKeyBindNames[i]].keys,
+                    () => keyBindKeys(this.keys[miningChoiceKeyBindNames[i]]),
                     (event) => {
                         if (document.querySelector('[data-asbplayer-sentence-explanation]')) return false;
                         event.preventDefault();

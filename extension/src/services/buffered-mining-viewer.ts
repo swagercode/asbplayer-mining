@@ -1,5 +1,5 @@
-import { defaultSettings } from '@project/common/settings';
-import { observeKeyBindSet } from './key-bind-settings';
+import { defaultSettings, keyBindKeys } from '@project/common/settings';
+import { observeKeyBindSet } from '@project/extension/src/services/key-bind-settings';
 import { bindBufferedMiningShortcut } from '@project/extension/src/services/buffered-mining-shortcut';
 
 /** Small controls in the secondary viewer only; never draws over the episode. */
@@ -21,7 +21,7 @@ export function bindBufferedMiningViewer() {
         const stopSettings = observeKeyBindSet((updated) => {
             keys = updated;
             mine.title =
-                [keys.bufferedMiningNormal.keys, keys.bufferedMiningAudio.keys].filter(Boolean).join(' / ') +
+                [...keyBindKeys(keys.bufferedMiningNormal), ...keyBindKeys(keys.bufferedMiningAudio)].join(' / ') +
                 ' · current subtitle, or the previous subtitle during a gap';
         });
         const status = document.createElement('p');
@@ -48,12 +48,12 @@ export function bindBufferedMiningViewer() {
         const unbindShortcut = bindBufferedMiningShortcut(
             queueCard,
             () => enabled,
-            () => keys.bufferedMiningNormal.keys
+            () => keyBindKeys(keys.bufferedMiningNormal)
         );
         const unbindAudioShortcut = bindBufferedMiningShortcut(
             () => queueCard('audio'),
             () => enabled,
-            () => keys.bufferedMiningAudio.keys
+            () => keyBindKeys(keys.bufferedMiningAudio)
         );
         const refresh = async () => {
             try {

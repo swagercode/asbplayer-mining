@@ -16,6 +16,19 @@ import { defaultSettings } from '@project/common/settings/settings-provider';
 import { describe, expect, it } from '@jest/globals';
 import { PlayMode } from '@project/common';
 
+it('exports and imports the alternative key without dropping the primary shortcut', () => {
+    const settings = {
+        ...defaultSettings,
+        keyBindSet: {
+            ...defaultSettings.keyBindSet,
+            bufferedMiningNormal: { keys: 'N', alternateKeys: 'H' },
+        },
+    };
+    const exported = settingsForExport(settings);
+    expect(() => validateSettings(exported)).not.toThrow();
+    expect(exported.keyBindSet?.bufferedMiningNormal).toEqual({ keys: 'N', alternateKeys: 'H' });
+});
+
 it('validates the default settings', () => {
     validateSettings(defaultSettings);
 });

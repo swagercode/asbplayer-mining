@@ -1,4 +1,4 @@
-import { defaultSettings, miningChoiceKeyBindNames } from '@project/common/settings';
+import { defaultSettings, keyBindKeys, miningChoiceKeyBindNames } from '@project/common/settings';
 import { observeKeyBindSet } from '@/services/key-bind-settings';
 import { currentPageDelegate } from '@/services/pages';
 import { bindPriorityNavigationKeys } from '@project/common/key-binder/single-key-shortcut';
@@ -20,13 +20,13 @@ export default defineContentScript({
         let keys = defaultSettings.keyBindSet;
         const cleanup = [
             bindPriorityNavigationKeys(
-                () => miningChoiceKeyBindNames.map((name) => keys[name].keys),
+                () => miningChoiceKeyBindNames.flatMap((name) => keyBindKeys(keys[name])),
                 () =>
                     document.querySelector('[data-asbplayer-mining-review]:not([data-asbplayer-mining-word])') !==
                         null && document.querySelector('[data-asbplayer-sentence-explanation]') === null
             ),
             bindPriorityNavigationKeys(
-                () => [keys.bufferedMiningCancel.keys],
+                () => keyBindKeys(keys.bufferedMiningCancel),
                 () =>
                     document.querySelector('[data-asbplayer-mining-review], [data-asbplayer-sentence-explanation]') !==
                     null
@@ -36,15 +36,16 @@ export default defineContentScript({
             // Install before the site's window capture listeners, then update keys in place.
             cleanup.push(
                 bindPriorityNavigationKeys(
-                    () => [
-                        keys.togglePlay.keys,
-                        keys.seekToPreviousSubtitle.keys,
-                        keys.seekToNextSubtitle.keys,
-                        keys.seekToBeginningOfCurrentSubtitle.keys,
-                        keys.bufferedMiningNormal.keys,
-                        keys.bufferedMiningAudio.keys,
-                        keys.explainSentence.keys,
-                    ],
+                    () =>
+                        [
+                            keys.togglePlay,
+                            keys.seekToPreviousSubtitle,
+                            keys.seekToNextSubtitle,
+                            keys.seekToBeginningOfCurrentSubtitle,
+                            keys.bufferedMiningNormal,
+                            keys.bufferedMiningAudio,
+                            keys.explainSentence,
+                        ].flatMap(keyBindKeys),
                     () => /\/watch\//.test(location.pathname)
                 )
             );

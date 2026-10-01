@@ -73,6 +73,47 @@ describe('document-start priority navigation', () => {
 });
 
 describe('configurable priority shortcuts', () => {
+    it('accepts keyboard and controller alternatives, including overlapping held presses and live edits', () => {
+        let shortcuts = ['N', 'H'];
+        const priority = bindPriorityNavigationKeys(
+            () => shortcuts,
+            () => true
+        );
+        const site = jest.fn();
+        window.addEventListener('keydown', site, true);
+        const action = jest.fn((event: KeyboardEvent) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return true;
+        });
+        const unbind = bindSingleKeyShortcut(() => shortcuts, action);
+        const fire = (type: string, key: string, target: EventTarget = document.body) => {
+            const event = new KeyboardEvent(type, { key, bubbles: true, cancelable: true });
+            target.dispatchEvent(event);
+            return event.defaultPrevented;
+        };
+        try {
+            expect(fire('keydown', 'n')).toBe(true);
+            expect(fire('keydown', 'h')).toBe(true);
+            expect(fire('keyup', 'n')).toBe(true);
+            expect(fire('keyup', 'h')).toBe(true);
+            expect(action).toHaveBeenCalledTimes(2);
+            expect(site).not.toHaveBeenCalled();
+            const input = document.createElement('input');
+            document.body.append(input);
+            expect(fire('keydown', 'h', input)).toBe(false);
+            input.remove();
+            shortcuts = ['N', 'G'];
+            expect(fire('keydown', 'h')).toBe(false);
+            expect(fire('keydown', 'g')).toBe(true);
+            expect(action).toHaveBeenCalledTimes(3);
+        } finally {
+            priority();
+            unbind();
+            window.removeEventListener('keydown', site, true);
+        }
+    });
+
     it('remaps in place ahead of site listeners and preserves modifiers and full physical presses', () => {
         let shortcut = 'ctrl+shift+j';
         let enabled = true;

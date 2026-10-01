@@ -8,6 +8,7 @@ import type {
     TextSubtitleSettings,
 } from '@project/common/settings/settings';
 import type { DictionaryTrack } from '@project/common/settings/settings-dictionary';
+import { restoreMicroKeyboardKeys } from '@project/common/settings/key-bindings';
 import {
     AutoPauseResumeMode,
     SubtitleListPreference,
@@ -686,6 +687,11 @@ export const ensureConsistencyOnRead = (settings: Partial<AsbplayerSettings>) =>
             } else {
                 newKeyBindSet[keyBindName] = keyBindSet[keyBindName];
             }
+        }
+        const migrated = restoreMicroKeyboardKeys(newKeyBindSet, defaultSettings.keyBindSet);
+        if (migrated !== newKeyBindSet) {
+            Object.assign(newKeyBindSet, migrated);
+            keyBindSetModified = true;
         }
     }
 

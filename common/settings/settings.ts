@@ -453,6 +453,7 @@ export function areSubtitleSettingsEqual(left: SubtitleSettings | undefined, rig
 
 export interface KeyBind {
     readonly keys: string;
+    readonly alternateKeys?: string;
 }
 
 export interface KeyBindSet {

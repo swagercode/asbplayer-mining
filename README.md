@@ -31,6 +31,8 @@ Screenshots use Chrome's capture API when available. If the dictionary parser mi
 
 These can all be changed under **Settings → Keyboard Shortcuts**. The mining controls work in fullscreen.
 
+The existing 8BitDo Micro layout now keeps those keyboard shortcuts alongside its button mappings. Both bindings are editable in settings, and the chooser still shows D-pad arrows. The Micro sends keyboard letters, so its right D-pad and the keyboard's **F** share a key: while choices are visible, F picks the second word. Outside the chooser, F explains the sentence; **R2** can explain in either case.
+
 ## Setup
 
 Tested on **macOS with Chrome**. You'll need:

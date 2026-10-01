@@ -10,6 +10,9 @@ const keyBindSchema = {
         keys: {
             type: 'string',
         },
+        alternateKeys: {
+            type: 'string',
+        },
     },
     required: ['keys'],
 };

@@ -39,8 +39,8 @@ describe('fullscreen subtitle navigation', () => {
             event.stopImmediatePropagation();
         });
         const binder = new DefaultKeyBinder({
-            seekToBeginningOfCurrentSubtitle: { keys: 'W' },
-            seekToPreviousSubtitle: { keys: 'S' },
+            seekToBeginningOfCurrentSubtitle: { keys: 'W', alternateKeys: 'I' },
+            seekToPreviousSubtitle: { keys: 'S', alternateKeys: 'K' },
             seekToNextSubtitle: { keys: '' },
         } as KeyBindSet);
         const current = binder.bindSeekToBeginningOfCurrentSubtitle(
@@ -91,6 +91,14 @@ describe('fullscreen subtitle navigation', () => {
         button.focus();
         key('keydown', 's', button);
         expect(onSeek).toHaveBeenCalledTimes(2);
+    });
+
+    it('accepts controller navigation alongside the original keyboard navigation', () => {
+        for (const value of ['w', 'i', 's', 'k']) {
+            expect(key('keydown', value).defaultPrevented).toBe(true);
+            expect(key('keyup', value).defaultPrevented).toBe(true);
+        }
+        expect(onSeek.mock.calls.map(([, subtitle]) => subtitle.text)).toEqual(['今', '今', '前', '前']);
     });
 
     it('recovers when an unrelated key release is lost during fullscreen/focus changes', () => {
@@ -160,7 +168,7 @@ describe('fullscreen play/pause', () => {
 
     beforeEach(() => {
         disabled = false;
-        cleanup = [bindPriorityNavigationKeys(['l'], () => !disabled)];
+        cleanup = [bindPriorityNavigationKeys(['space', 'l'], () => !disabled)];
         // Crunchyroll's capture listener is registered before the video binding.
         site = jest.fn((event: Event) => event.stopImmediatePropagation());
         for (const type of ['keydown', 'keypress', 'keyup']) window.addEventListener(type, site, true);
@@ -168,7 +176,7 @@ describe('fullscreen play/pause', () => {
             event.preventDefault();
             event.stopImmediatePropagation();
         });
-        const binder = new DefaultKeyBinder({ togglePlay: { keys: 'L' } } as KeyBindSet);
+        const binder = new DefaultKeyBinder({ togglePlay: { keys: 'space', alternateKeys: 'L' } } as KeyBindSet);
         cleanup.push(binder.bindPlay(toggle, () => disabled, true));
     });
 
@@ -219,5 +227,13 @@ describe('fullscreen play/pause', () => {
         cleanup[1]();
         fire('keydown');
         expect(toggle).not.toHaveBeenCalled();
+    });
+
+    it('also toggles with the keyboard spacebar', () => {
+        for (const type of ['keydown', 'keypress', 'keyup']) {
+            expect(fire(type, document.body, { key: ' ', code: 'Space', keyCode: 32 }).defaultPrevented).toBe(true);
+        }
+        expect(toggle).toHaveBeenCalledTimes(1);
+        expect(site).not.toHaveBeenCalled();
     });
 });

@@ -621,7 +621,10 @@ const KeyboardShortcutsSettingsTab: React.FC<Props> = ({
 
     const handleKeysChange = useCallback(
         (keys: string, keyBindName: KeyBindName) => {
-            void onSettingChanged('keyBindSet', { ...settings.keyBindSet, [keyBindName]: { keys } });
+            void onSettingChanged('keyBindSet', {
+                ...settings.keyBindSet,
+                [keyBindName]: { ...settings.keyBindSet[keyBindName], keys },
+            });
         },
         [settings.keyBindSet, onSettingChanged]
     );
@@ -666,6 +669,24 @@ const KeyboardShortcutsSettingsTab: React.FC<Props> = ({
                     onKeysChange={(keys) => handleKeysChange(keys, keyBindName)}
                     onOpenExtensionShortcuts={onOpenChromeExtensionShortcuts}
                 />
+                {keyBindSet[keyBindName].alternateKeys !== undefined && !properties.boundViaBrowser && (
+                    <KeyBindField
+                        label={t('settings.alternateShortcut', {
+                            defaultValue: '{{action}} (alternative)',
+                            action: properties.label,
+                        })}
+                        singleKeyWithModifiers
+                        keys={keyBindSet[keyBindName].alternateKeys ?? ''}
+                        boundViaChrome={false}
+                        onKeysChange={(alternateKeys) =>
+                            void onSettingChanged('keyBindSet', {
+                                ...settings.keyBindSet,
+                                [keyBindName]: { ...keyBindSet[keyBindName], alternateKeys },
+                            })
+                        }
+                        onOpenExtensionShortcuts={onOpenChromeExtensionShortcuts}
+                    />
+                )}
                 {properties.additionalControl}
             </div>
         );

@@ -1,7 +1,8 @@
 const priorityKeydown = 'asbplayer-priority-navigation-keydown';
 const priorityKeyup = 'asbplayer-priority-navigation-keyup';
 
-type Shortcut = string | (() => string);
+type ShortcutKeys = string | readonly string[];
+export type PlaybackShortcut = ShortcutKeys | (() => ShortcutKeys);
 const aliases: Record<string, string> = {
     space: ' ',
     spacebar: ' ',
@@ -34,7 +35,7 @@ const modifiers: Record<string, ModifierFlag> = {
     '⌘': 'metaKey',
 };
 const normalizeKey = (key: string) => aliases[key.toLowerCase()] ?? key.toLowerCase();
-const valueOf = (shortcut: Shortcut) => (typeof shortcut === 'function' ? shortcut() : shortcut);
+const valueOf = (shortcut: PlaybackShortcut) => (typeof shortcut === 'function' ? shortcut() : shortcut);
 
 function parse(shortcut: string) {
     if (!shortcut.trim()) return;
@@ -51,7 +52,10 @@ function parse(shortcut: string) {
     return { key: normalizeKey(key), flags };
 }
 
-export const supportsPlaybackShortcut = (shortcut: string) => parse(shortcut) !== undefined;
+export const supportsPlaybackShortcut = (shortcut: ShortcutKeys): boolean =>
+    typeof shortcut === 'string'
+        ? parse(shortcut) !== undefined
+        : shortcut.length > 0 && shortcut.every(supportsPlaybackShortcut);
 
 function isPlaybackTarget(event: KeyboardEvent) {
     return (
@@ -89,7 +93,8 @@ const codeKeys: Record<string, string> = {
     Minus: '-',
     Equal: '=',
 };
-function matches(shortcut: string, event: KeyboardEvent) {
+export function matchesPlaybackShortcut(shortcut: ShortcutKeys, event: KeyboardEvent): boolean {
+    if (typeof shortcut !== 'string') return shortcut.some((key) => matchesPlaybackShortcut(key, event));
     const expected = parse(shortcut);
     return (
         expected !== undefined &&
@@ -117,7 +122,7 @@ export function bindPriorityNavigationKeys(keys: string[] | (() => string[]), en
             !finishing &&
             (!enabled() ||
                 !isPlaybackTarget(event) ||
-                !(typeof keys === 'function' ? keys() : keys).some((key) => matches(key, event)))
+                !(typeof keys === 'function' ? keys() : keys).some((key) => matchesPlaybackShortcut(key, event)))
         )
             return;
         event.preventDefault();
@@ -147,20 +152,19 @@ export function bindPriorityNavigationKeys(keys: string[] | (() => string[]), en
 }
 
 /** Match configured modifiers directly, without a shared pressed-key set that can get stuck. */
-export function bindSingleKeyShortcut(key: Shortcut, handler: (event: KeyboardEvent) => boolean) {
-    let handled: string | undefined;
+export function bindSingleKeyShortcut(key: PlaybackShortcut, handler: (event: KeyboardEvent) => boolean) {
+    const handled = new Set<string>();
     const keydown = (event: KeyboardEvent) => {
-        if (!matches(valueOf(key), event) || !isPlaybackTarget(event)) return;
-        if (handler(event)) handled = physicalKey(event);
+        if (!matchesPlaybackShortcut(valueOf(key), event) || !isPlaybackTarget(event)) return;
+        if (handler(event)) handled.add(physicalKey(event));
     };
     const keyup = (event: KeyboardEvent) => {
-        if (physicalKey(event) !== handled) return;
-        handled = undefined;
+        if (!handled.delete(physicalKey(event))) return;
         event.preventDefault();
         event.stopImmediatePropagation();
     };
     const reset = () => {
-        handled = undefined;
+        handled.clear();
     };
     window.addEventListener('keydown', keydown, true);
     window.addEventListener('keyup', keyup, true);
