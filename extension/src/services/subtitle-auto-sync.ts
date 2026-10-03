@@ -59,13 +59,21 @@ interface AlignmentResponse {
     error?: string;
 }
 
+export interface SubtitleAlignmentResult {
+    files: SerializedSubtitleFile[];
+    aligned: boolean;
+    // A valid timing comparison failed. Another release of this episode may fit;
+    // missing references, download failures and bridge errors do not warrant retries.
+    rejected?: boolean;
+}
+
 /** Only the Japanese files are loaded. The native track remains an invisible timing reference. */
 export async function autoSynchronizeSubtitles(
     files: SerializedSubtitleFile[],
     tracks: VideoDataSubtitleTrack[],
     durationSeconds: number,
     isStale: () => boolean
-): Promise<{ files: SerializedSubtitleFile[]; aligned: boolean }> {
+): Promise<SubtitleAlignmentResult> {
     const original = { files, aligned: false };
     const reference = nativeTimingReference(tracks);
     if (files.length !== 1 || !reference || !Number.isFinite(durationSeconds) || isStale()) return original;
@@ -96,12 +104,12 @@ export async function autoSynchronizeSubtitles(
         if (isStale()) return original;
         if (!result?.accepted || !result.timings) {
             asbWarn('video/sync', 'Automatic timing kept the original subtitles:', result?.error ?? result?.reason);
-            return original;
+            return result?.accepted === false && !result.error ? { ...original, rejected: true } : original;
         }
         const aligned = retimeSubtitles(text, result.timings);
         asbLog('video/sync', `Subtitle timing aligned locally (agreement ${result.score}, cached ${result.cached}).`);
         return {
-            files: [{ ...files[0], base64: bufferToBase64(new TextEncoder().encode(aligned).buffer as ArrayBuffer) }],
+            files: [{ ...files[0], base64: bufferToBase64(new TextEncoder().encode(aligned).buffer) }],
             aligned: true,
         };
     } catch (error) {

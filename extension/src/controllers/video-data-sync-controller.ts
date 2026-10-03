@@ -1,4 +1,4 @@
-import { arrayEquals, asbError, asbWarn } from '@project/common/util';
+import { arrayEquals, asbError, asbLog, asbWarn } from '@project/common/util';
 import type {
     ActiveProfileMessage,
     ConfirmedVideoDataSubtitleTrack,
@@ -31,6 +31,7 @@ import { setGenericSubtitleParserOptionsForHost } from '@/services/generic-subti
 import JimakuAutoSelectService from '@/services/jimaku-auto-select-service';
 import { disableCrunchyrollNativeSubtitles } from '@/services/crunchyroll-native-subtitles';
 import { autoSynchronizeSubtitles } from '@/services/subtitle-auto-sync';
+import type { SubtitleAlignmentResult } from '@/services/subtitle-auto-sync';
 import type { PageDelegate } from '@/services/pages';
 import { JimakuAutoSelectError } from '@project/common/subtitle-sources/jimaku-auto-select';
 import type { JimakuSubtitleCandidate } from '@project/common/subtitle-sources/jimaku-auto-select';
@@ -560,9 +561,21 @@ export default class VideoDataSyncController {
 
             const labelWithoutExtension = track.label.substring(0, track.label.lastIndexOf('.'));
             const name = basename ? `${basename} - ${labelWithoutExtension}` : labelWithoutExtension;
+            // Only try files confirmed by Jimaku's episode filter. An unfiltered
+            // archive can contain other episodes with coincidentally similar timing.
+            const alternatives = result.episodeFiltered
+                ? result.candidates
+                      .filter((candidate) => candidate.url !== result.file.url)
+                      .slice(0, 3)
+                      .map((candidate) => {
+                          const alternative = jimakuSubtitleTrack(candidate);
+                          const label = alternative.label.substring(0, alternative.label.lastIndexOf('.'));
+                          return { ...alternative, name: basename ? `${basename} - ${label}` : label };
+                      })
+                : [];
 
             // _syncDataArray reports its own errors via the picker
-            if (await this._syncDataArray([{ ...track, name }], undefined, isStale, true)) {
+            if (await this._syncDataArray([{ ...track, name }], undefined, isStale, true, alternatives)) {
                 void this._rememberJimakuWork(result.entry);
             }
 
@@ -844,7 +857,8 @@ export default class VideoDataSyncController {
         data: ConfirmedVideoDataSubtitleTrack[],
         syncWithAsbplayerId?: string,
         isStale: () => boolean = () => false,
-        autoAlign = false
+        autoAlign = false,
+        alternatives: ConfirmedVideoDataSubtitleTrack[] = []
     ) {
         try {
             const subtitles: SerializedSubtitleFile[] = [];
@@ -858,7 +872,7 @@ export default class VideoDataSyncController {
                 }
             }
 
-            const result = autoAlign
+            let result: SubtitleAlignmentResult = autoAlign
                 ? await autoSynchronizeSubtitles(
                       subtitles,
                       this._syncedData?.subtitles ?? [],
@@ -866,6 +880,35 @@ export default class VideoDataSyncController {
                       isStale
                   )
                 : { files: subtitles, aligned: false };
+            if (isStale()) return false;
+            if (result.rejected) {
+                for (const alternative of alternatives) {
+                    if (isStale() || this.pickerVisible) return false;
+                    try {
+                        const { name, language, extension, url, file } = alternative;
+                        const files = await this._subtitlesForUrl(name, language, extension, url!, file !== undefined);
+                        if (isStale()) return false;
+                        if (files === undefined) continue;
+                        const candidate = await autoSynchronizeSubtitles(
+                            files,
+                            this._syncedData?.subtitles ?? [],
+                            this._context.video.duration,
+                            isStale
+                        );
+                        if (isStale() || this.pickerVisible) return false;
+                        if (candidate.aligned) {
+                            result = candidate;
+                            this._addJimakuTracks([alternative]);
+                            asbLog('video/sync', `Using a subtitle release that matches native timing: ${name}`);
+                            break;
+                        }
+                        if (!candidate.rejected) break; // A reference or bridge failure affects every release.
+                    } catch (error) {
+                        if (!isStale())
+                            asbWarn('video/sync', 'Could not check an alternative subtitle release:', error);
+                    }
+                }
+            }
             if (isStale()) return false;
             await this._syncSubtitles(
                 result.files,

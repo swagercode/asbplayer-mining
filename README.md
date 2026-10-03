@@ -7,7 +7,7 @@ Press **N** when you hear a word you don't know. Jev ranks the words in the curr
 ## What it does
 
 - Finds Japanese subtitles on Jimaku, including combined episodes, and opens them in a separate viewer.
-- Syncs them locally against Crunchyroll's hidden English subtitle timings using ALASS. Uncertain matches keep their original timing.
+- Syncs them locally against Crunchyroll's hidden English subtitle timings using ALASS. If a release doesn't match, it tries other files for that episode. Uncertain matches keep their original timing.
 - Turns off captions on the video.
 - Shows word choices as soon as they're ready. One choice goes straight to the definition; gaps use the last subtitle.
 - Makes Anki cards from Yomitan entries, with sentence audio from an OBS buffer. No replaying to record, and pauses are cut out.

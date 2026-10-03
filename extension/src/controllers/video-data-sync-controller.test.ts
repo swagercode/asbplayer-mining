@@ -57,7 +57,7 @@ describe('automatic episode subtitle loading', () => {
         mockDisableNativeSubtitles.mockReset().mockResolvedValue(true);
         mockAutoSync.mockReset().mockImplementation(async (files) => ({ files, aligned: false }));
         loadSubtitles = jest.fn().mockResolvedValue(undefined);
-        const { default: Controller } = await import('./video-data-sync-controller');
+        const { default: Controller } = await import('@project/extension/src/controllers/video-data-sync-controller');
         controller = new Controller(
             { video: document.createElement('video'), hasPageScript: true, loadSubtitles } as unknown as Binding,
             {} as SettingsProvider
@@ -118,6 +118,79 @@ describe('automatic episode subtitle loading', () => {
         expect(loadSubtitles.mock.calls[0][0]).toHaveLength(1);
         expect(loadSubtitles.mock.calls[0][3]).toBe(true);
         expect(mockDisableNativeSubtitles).toHaveBeenCalledTimes(1);
+    });
+
+    const releases = (episodeFiltered = true) => ({
+        ...selection('Broadcast'),
+        episodeFiltered,
+        candidates: [selection('Broadcast').file, selection('Streaming').file],
+    });
+
+    it('tries an episode-matched release when the selected release fails timing validation', async () => {
+        mockSelect.mockResolvedValue(releases());
+        mockAutoSync
+            .mockImplementationOnce(async (files) => ({ files, aligned: false, rejected: true }))
+            .mockImplementationOnce(async (files) => ({ files, aligned: true }));
+        await controller.requestSubtitles({ kind: 'reload', videoChanged: true });
+        emit('Episode 1');
+        await flush();
+        expect(mockSelect).toHaveBeenCalledTimes(1);
+        expect(mockAutoSync).toHaveBeenCalledTimes(2);
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(loadSubtitles).toHaveBeenCalledTimes(1);
+        expect(loadSubtitles.mock.calls[0][0]).toHaveLength(1);
+        expect(loadSubtitles.mock.calls[0][0][0].name).toContain('Streaming');
+        expect(loadSubtitles.mock.calls[0][3]).toBe(true);
+        expect(controller.pickerVisible).toBe(false);
+    });
+
+    it.each(['unfiltered archive', 'unavailable timing reference'])(
+        'avoids unsafe or futile fallback: %s',
+        async (reason) => {
+            mockSelect.mockResolvedValue(releases(reason !== 'unfiltered archive'));
+            mockAutoSync.mockImplementation(async (files) => ({
+                files,
+                aligned: false,
+                rejected: reason === 'unfiltered archive',
+            }));
+            await controller.requestSubtitles({ kind: 'reload', videoChanged: true });
+            emit('Episode 1');
+            await flush();
+            expect(mockAutoSync).toHaveBeenCalledTimes(1);
+            expect(fetch).toHaveBeenCalledTimes(1);
+            expect(loadSubtitles.mock.calls[0][0][0].name).toContain('Broadcast');
+        }
+    );
+
+    it('keeps the selected file when no alternative passes the existing quality check', async () => {
+        mockSelect.mockResolvedValue(releases());
+        mockAutoSync.mockImplementation(async (files) => ({ files, aligned: false, rejected: true }));
+        await controller.requestSubtitles({ kind: 'reload', videoChanged: true });
+        emit('Episode 1');
+        await flush();
+        expect(mockAutoSync).toHaveBeenCalledTimes(2);
+        expect(loadSubtitles).toHaveBeenCalledTimes(1);
+        expect(loadSubtitles.mock.calls[0][0][0].name).toContain('Broadcast');
+        expect(loadSubtitles.mock.calls[0][3]).toBe(false);
+    });
+
+    it('does not load an alternative alignment after episode navigation', async () => {
+        const alignment = deferred<unknown>();
+        mockSelect.mockResolvedValueOnce(releases()).mockResolvedValueOnce(selection('Episode 2'));
+        mockAutoSync
+            .mockImplementationOnce(async (files) => ({ files, aligned: false, rejected: true }))
+            .mockReturnValueOnce(alignment.promise);
+        await controller.requestSubtitles({ kind: 'reload', videoChanged: true });
+        emit('Episode 1');
+        await flush();
+        expect(mockAutoSync).toHaveBeenCalledTimes(2);
+        await controller.requestSubtitles({ kind: 'reload', videoChanged: true });
+        emit('Episode 2');
+        await flush();
+        alignment.resolve({ files: mockAutoSync.mock.calls[1][0], aligned: true });
+        await flush();
+        expect(loadSubtitles).toHaveBeenCalledTimes(1);
+        expect(loadSubtitles.mock.calls[0][0][0].name).toContain('Episode 2');
     });
 
     it('discards a late alignment when the episode changes', async () => {

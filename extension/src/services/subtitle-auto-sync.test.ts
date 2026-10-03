@@ -5,7 +5,7 @@ import {
     nativeTimingReference,
     retimeSubtitles,
     subtitleTimings,
-} from './subtitle-auto-sync';
+} from '@project/extension/src/services/subtitle-auto-sync';
 
 jest.mock('@project/common/util', () => ({ asbLog: jest.fn(), asbWarn: jest.fn() }));
 
@@ -85,7 +85,7 @@ describe('automatic subtitle timing', () => {
         }
     });
 
-    it.each([{ accepted: false }, { error: 'Bridge not installed' }, { accepted: true, timings: [[0, 10]] }])(
+    it.each([{ error: 'Bridge not installed' }, { accepted: true, timings: [[0, 10]] }])(
         'keeps the original file on an unusable response %j',
         async (response) => {
             send.mockResolvedValue(response);
@@ -95,6 +95,20 @@ describe('automatic subtitle timing', () => {
             });
         }
     );
+
+    it('allows another release only after a valid timing comparison rejects this file', async () => {
+        send.mockResolvedValue({ accepted: false, score: 0.45, reason: 'Timings disagree' });
+        expect(await autoSynchronizeSubtitles([file], [native], 100, () => false)).toEqual({
+            files: [file],
+            aligned: false,
+            rejected: true,
+        });
+        send.mockResolvedValue({ accepted: false, error: 'Bridge unavailable' });
+        expect(await autoSynchronizeSubtitles([file], [native], 100, () => false)).toEqual({
+            files: [file],
+            aligned: false,
+        });
+    });
 
     it('discards alignment completed after episode navigation', async () => {
         let stale = false;
