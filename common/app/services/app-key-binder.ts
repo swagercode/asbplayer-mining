@@ -337,7 +337,7 @@ export default class AppKeyBinder implements KeyBinder {
 
     bindPlay(
         onPlay: (event: KeyboardEvent) => void,
-        disabledGetter: () => boolean,
+        disabledGetter: (event: KeyboardEvent) => boolean,
         useCapture?: boolean | undefined
     ): () => void {
         return this.defaultKeyBinder.bindPlay(onPlay, disabledGetter, useCapture);

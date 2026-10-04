@@ -78,6 +78,7 @@ const keyBindSectionByName: { [key in KeyBindName]: KeyboardShortcutSection } = 
     toggleRecording: 'mining',
     toggleSidePanel: 'playback',
     togglePlay: 'playback',
+    toggleFullscreen: 'playback',
     toggleAutoPause: 'playback',
     toggleCondensedPlayback: 'playback',
     toggleFastForwardPlayback: 'playback',
@@ -430,6 +431,7 @@ const KeyboardShortcutsSettingsTab: React.FC<Props> = ({
                 hide: !extensionInstalled || !extensionSupportsSidePanel,
             },
             togglePlay: { label: t('binds.togglePlay'), boundViaBrowser: false },
+            toggleFullscreen: { label: t('binds.toggleFullscreen'), boundViaBrowser: false },
             toggleAutoPause: {
                 label: t('binds.toggleAutoPause'),
                 boundViaBrowser: false,

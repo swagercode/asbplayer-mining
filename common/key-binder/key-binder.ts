@@ -1,7 +1,7 @@
 import type { SubtitleModel } from '@project/common/src/model';
 import hotkeys from 'hotkeys-js';
 import type { KeyBindSet, SeekableTracks, TokenStatus } from '@project/common/settings';
-import { isTrackSeekable, keyBindKeys, subtitleNavigationKeys } from '@project/common/settings';
+import { isTrackSeekable, keyBindKeys, playbackToggleKeys, subtitleNavigationKeys } from '@project/common/settings';
 import { bindSingleKeyShortcut, supportsPlaybackShortcut } from '@project/common/key-binder/single-key-shortcut';
 
 export function adjacentSubtitle(
@@ -153,7 +153,11 @@ export interface KeyBinder {
         disabledGetter: () => boolean,
         capture?: boolean
     ): () => void;
-    bindPlay(onPlay: (event: KeyboardEvent) => void, disabledGetter: () => boolean, capture?: boolean): () => void;
+    bindPlay(
+        onPlay: (event: KeyboardEvent) => void,
+        disabledGetter: (event: KeyboardEvent) => boolean,
+        capture?: boolean
+    ): () => void;
     bindAutoPause(
         onAutoPause: (event: KeyboardEvent) => void,
         disabledGetter: () => boolean,
@@ -911,15 +915,19 @@ export class DefaultKeyBinder implements KeyBinder {
         };
     }
 
-    bindPlay(onPlay: (event: KeyboardEvent) => void, disabledGetter: () => boolean, capture = false) {
-        const shortcut = keyBindKeys(this.keyBindSet.togglePlay);
+    bindPlay(
+        onPlay: (event: KeyboardEvent) => void,
+        disabledGetter: (event: KeyboardEvent) => boolean,
+        capture = false
+    ) {
+        const shortcut = playbackToggleKeys(this.keyBindSet);
 
         if (!shortcut.length) {
             return () => {};
         }
 
         const handler = (event: KeyboardEvent) => {
-            if (disabledGetter()) {
+            if (disabledGetter(event)) {
                 return false;
             }
 

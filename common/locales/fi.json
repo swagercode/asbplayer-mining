@@ -170,6 +170,7 @@
         "toggleCondensedPlayback": "Vaihda tiivistettyä soittoa",
         "toggleFastForwardPlayback": "Vaihda pikakelaatilaa",
         "togglePlay": "Toista/Keskeytä",
+        "toggleFullscreen": "Toggle fullscreen",
         "toggleSubtitles": "Tekstitykset päälle/pois",
         "toggleVideoSubtitleTrack1": "Vaihda tekstitysraita 1 asbplayerissä",
         "toggleVideoSubtitleTrack2": "Vaihda tekstitysraita 2 asbplayerissä",

@@ -170,6 +170,7 @@
         "toggleCondensedPlayback": "Attiva/Disattiva riproduzione condensata",
         "toggleFastForwardPlayback": "Attiva/Disattiva riproduzione in avanzamento rapido",
         "togglePlay": "Riproduci/Metti in pausa",
+        "toggleFullscreen": "Toggle fullscreen",
         "toggleSubtitles": "Mostra/Nascondi sottotitoli",
         "toggleVideoSubtitleTrack1": "Mostra/Nascondi traccia sottotitoli 1 nel video",
         "toggleVideoSubtitleTrack2": "Mostra/Nascondi traccia sottotitoli 2 nel video",

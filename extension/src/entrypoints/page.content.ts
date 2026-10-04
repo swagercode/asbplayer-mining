@@ -2,6 +2,7 @@ import {
     defaultSettings,
     keyBindKeys,
     miningChoiceKeyBindNames,
+    playbackToggleKeys,
     subtitleNavigationKeys,
 } from '@project/common/settings';
 import { observeKeyBindSet } from '@/services/key-bind-settings';
@@ -44,8 +45,9 @@ export default defineContentScript({
                     () => [
                         ...subtitleNavigationKeys(keys, false),
                         ...subtitleNavigationKeys(keys, true),
+                        ...playbackToggleKeys(keys),
                         ...[
-                            keys.togglePlay,
+                            keys.toggleFullscreen,
                             keys.seekToBeginningOfCurrentSubtitle,
                             keys.bufferedMiningNormal,
                             keys.bufferedMiningAudio,

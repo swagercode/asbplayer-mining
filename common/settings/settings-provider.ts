@@ -205,6 +205,7 @@ export const defaultSettings: AsbplayerSettings = {
         bufferedMiningChoice8: { keys: '8' },
         bufferedMiningChoice9: { keys: '9' },
         togglePlay: { keys: 'space' },
+        toggleFullscreen: { keys: '' },
         toggleAutoPause: { keys: isMacOs ? '⇧+P' : 'shift+P' },
         toggleCondensedPlayback: { keys: isMacOs ? '⇧+O' : 'shift+O' },
         toggleFastForwardPlayback: { keys: isMacOs ? '⇧+F' : 'shift+F' },

@@ -170,6 +170,7 @@
         "toggleCondensedPlayback": "Включить/выключить сжатое воспроизведение",
         "toggleFastForwardPlayback": "Включить/выключить ускоренное воспроизведение",
         "togglePlay": "Воспроизведение/пауза",
+        "toggleFullscreen": "Toggle fullscreen",
         "toggleSubtitles": "Показать/скрыть субтитры",
         "toggleVideoSubtitleTrack1": "Показать/скрыть дорожку субтитров 1 в видео",
         "toggleVideoSubtitleTrack2": "Показать/скрыть дорожку субтитров 2 в видео",

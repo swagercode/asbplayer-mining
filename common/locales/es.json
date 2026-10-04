@@ -170,6 +170,7 @@
         "toggleCondensedPlayback": "Activar/Desactivar reproducción condensada",
         "toggleFastForwardPlayback": "Activar/Desactivar reproducción acelerada",
         "togglePlay": "Reproducir/Pausar",
+        "toggleFullscreen": "Toggle fullscreen",
         "toggleSubtitles": "Activar/Desactivar subtítulos",
         "toggleVideoSubtitleTrack1": "Activar/Desactivar pista de subtítulos 1 en el video",
         "toggleVideoSubtitleTrack2": "Activar/Desactivar pista de subtítulos 2 en el video",

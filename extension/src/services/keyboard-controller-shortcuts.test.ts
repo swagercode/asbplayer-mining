@@ -2,6 +2,7 @@ import {
     defaultSettings,
     keyBindKeys,
     miningChoiceKeyBindNames,
+    playbackToggleKeys,
     subtitleNavigationKeys,
 } from '@project/common/settings';
 import { bindPriorityNavigationKeys } from '@project/common/key-binder/single-key-shortcut';
@@ -14,7 +15,9 @@ const keys = {
     bufferedMiningNormal: { keys: 'N', alternateKeys: 'H' },
     bufferedMiningAudio: { keys: 'V', alternateKeys: 'G' },
     bufferedMiningCancel: { keys: 'B', alternateKeys: 'J' },
-    explainSentence: { keys: 'F', alternateKeys: 'R' },
+    explainSentence: { keys: 'F', alternateKeys: 'C' },
+    toggleFullscreen: { keys: 'R' },
+    togglePlay: { keys: 'space', alternateKeys: 'L' },
     bufferedMiningChoice1: { keys: '1', alternateKeys: 'C' },
     bufferedMiningChoice2: { keys: '2', alternateKeys: 'F' },
     bufferedMiningChoice3: { keys: '3', alternateKeys: 'D' },
@@ -40,6 +43,11 @@ describe('keyboard and Micro together', () => {
     let explain: jest.SpyInstance;
     let navigation: KeyBindings;
     let seek: jest.Mock;
+    let pause: jest.Mock;
+    let play: jest.Mock;
+    let paused: boolean;
+    let fullscreen: Element | null;
+    let exitFullscreen: jest.Mock;
     const press = async (key: string) => {
         for (const type of ['keydown', 'keypress', 'keyup']) {
             const event = new KeyboardEvent(type, { key, bubbles: true, cancelable: true });
@@ -62,7 +70,9 @@ describe('keyboard and Micro together', () => {
                 [
                     ...subtitleNavigationKeys(keys, false),
                     ...subtitleNavigationKeys(keys, true),
+                    ...playbackToggleKeys(keys),
                     ...[
+                        keys.toggleFullscreen,
                         keys.bufferedMiningNormal,
                         keys.bufferedMiningAudio,
                         keys.bufferedMiningCancel,
@@ -76,7 +86,14 @@ describe('keyboard and Micro together', () => {
         for (const type of ['keydown', 'keypress', 'keyup']) window.addEventListener(type, site, true);
         video = document.createElement('video');
         document.body.append(video);
-        Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => document.body });
+        paused = false;
+        Object.defineProperty(video, 'paused', { get: () => paused });
+        fullscreen = document.body;
+        Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => fullscreen });
+        exitFullscreen = jest.fn(async () => {
+            fullscreen = null;
+        });
+        Object.defineProperty(document, 'exitFullscreen', { configurable: true, value: exitFullscreen });
         controller = new BufferedMiningController(
             video,
             () => [
@@ -101,6 +118,12 @@ describe('keyboard and Micro together', () => {
         explain = jest.spyOn(controller, 'explain').mockResolvedValue(undefined);
         controller.bind();
         seek = jest.fn().mockResolvedValue(undefined);
+        pause = jest.fn(() => {
+            paused = true;
+        });
+        play = jest.fn(async () => {
+            paused = false;
+        });
         navigation = new KeyBindings();
         navigation.setKeyBindSet(
             {
@@ -109,6 +132,8 @@ describe('keyboard and Micro together', () => {
                 navigationTimeMs: 3500,
                 seekableTracks: 1,
                 seek,
+                pause,
+                play,
                 subtitleController: {
                     subtitles: [1000, 3000, 5000].map((start) => ({ start, end: start + 1000, track: 0 })),
                 },
@@ -125,6 +150,7 @@ describe('keyboard and Micro together', () => {
         explain.mockRestore();
         video.remove();
         delete (document as any).fullscreenElement;
+        delete (document as any).exitFullscreen;
         (globalThis as any).browser = originalBrowser;
     });
 
@@ -163,9 +189,12 @@ describe('keyboard and Micro together', () => {
         await press('f');
         expect(seek.mock.calls.map(([time]) => time)).toEqual([1000, 5000]);
         expect(explain).not.toHaveBeenCalled();
+        await press('c');
+        expect(explain).toHaveBeenCalledTimes(1);
         seek.mockClear();
         await press('n');
         await press('r');
+        expect(exitFullscreen).toHaveBeenCalledTimes(1);
         expect(explain).toHaveBeenCalledTimes(1);
         await press('f');
         expect(explain).toHaveBeenCalledTimes(1);
@@ -175,6 +204,66 @@ describe('keyboard and Micro together', () => {
         expect(seek).toHaveBeenCalledWith(5000);
         expect(explain).toHaveBeenCalledTimes(1);
         expect(site).not.toHaveBeenCalled();
+    });
+
+    it.each(['d', 'l', ' '])('pauses and resumes with %s without a seek', async (key) => {
+        await press(key);
+        expect(pause).toHaveBeenCalledTimes(1);
+        expect(paused).toBe(true);
+        await press(key);
+        expect(play).toHaveBeenCalledTimes(1);
+        expect(paused).toBe(false);
+        expect(seek).not.toHaveBeenCalled();
+        expect(site).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['c', 0],
+        ['d', 2],
+    ])('keeps %s as a choice while the picker is open', async (key, index) => {
+        await press('n');
+        await press(key);
+        expect(send).toHaveBeenCalledWith(expect.objectContaining({ action: 'choose', index }));
+        expect(pause).not.toHaveBeenCalled();
+        expect(play).not.toHaveBeenCalled();
+        expect(explain).not.toHaveBeenCalled();
+        expect(site).not.toHaveBeenCalled();
+    });
+
+    it('does not toggle pause repeatedly when D-pad down is held', async () => {
+        await press('d');
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', repeat: true, bubbles: true }));
+        expect(pause).toHaveBeenCalledTimes(1);
+        expect(play).not.toHaveBeenCalled();
+    });
+
+    it('toggles fullscreen with R2 without explaining or changing playback', async () => {
+        fullscreen = null;
+        const player = document.createElement('div');
+        player.id = 'player-container';
+        document.body.append(player);
+        player.append(video);
+        const enter = jest.fn(async () => {
+            fullscreen = player;
+        });
+        player.requestFullscreen = enter;
+        try {
+            await press('r');
+            expect(enter).toHaveBeenCalledTimes(1);
+            expect(fullscreen).toBe(player);
+            document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', repeat: true, bubbles: true }));
+            expect(exitFullscreen).not.toHaveBeenCalled();
+            await press('r');
+            expect(exitFullscreen).toHaveBeenCalledTimes(1);
+            expect(fullscreen).toBeNull();
+            expect(explain).not.toHaveBeenCalled();
+            expect(pause).not.toHaveBeenCalled();
+            expect(play).not.toHaveBeenCalled();
+            expect(site).not.toHaveBeenCalled();
+        } finally {
+            document.body.append(video);
+            player.remove();
+        }
     });
 
     it.each(['s', 'k', 'm', 'ArrowRight'])('keeps the existing %s navigation key', async (key) => {

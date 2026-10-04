@@ -2,6 +2,7 @@ import { defaultSettings, ensureConsistencyOnRead } from '@project/common/settin
 import {
     hasMicroMiningKeys,
     keyBindKeys,
+    playbackToggleKeys,
     restoreMicroKeyboardKeys,
     subtitleNavigationKeys,
 } from '@project/common/settings/key-bindings';
@@ -60,4 +61,11 @@ it('adds the horizontal Micro keys without taking number keys or replacing the s
     expect(subtitleNavigationKeys(defaultSettings.keyBindSet, false)).toEqual(['S']);
     expect(subtitleNavigationKeys(defaultSettings.keyBindSet, true)).toEqual(['right']);
     expect(subtitleNavigationKeys({ ...keys, bufferedMiningChoice4: { keys: 'Q' } }, false)).toEqual(['S', 'K']);
+});
+
+it('adds D-pad down to pause without claiming the keyboard number choice', () => {
+    const keys = restoreMicroKeyboardKeys(micro, defaultSettings.keyBindSet);
+    expect(playbackToggleKeys(keys)).toEqual(['space', 'L', 'D']);
+    expect(playbackToggleKeys(defaultSettings.keyBindSet)).toEqual(['space']);
+    expect(playbackToggleKeys({ ...keys, bufferedMiningChoice3: { keys: 'Q' } })).toEqual(['space', 'L']);
 });

@@ -170,6 +170,7 @@
         "toggleCondensedPlayback": "압축 재생 전환",
         "toggleFastForwardPlayback": "빠른 재생 켜기/끄기",
         "togglePlay": "재생/일시정지",
+        "toggleFullscreen": "Toggle fullscreen",
         "toggleSubtitles": "자막 켜기/끄기",
         "toggleVideoSubtitleTrack1": "영상에서 자막 트랙 1 켜기/끄기",
         "toggleVideoSubtitleTrack2": "영상에서 자막 트랙 2 켜기/끄기",

@@ -170,6 +170,7 @@
         "toggleCondensedPlayback": "Toggle condensed playback",
         "toggleFastForwardPlayback": "Toggle fast forward playback",
         "togglePlay": "Play/pause",
+        "toggleFullscreen": "Toggle fullscreen",
         "toggleSubtitles": "Toggle subtitles",
         "toggleVideoSubtitleTrack1": "Toggle subtitle track 1 in video",
         "toggleVideoSubtitleTrack2": "Toggle subtitle track 2 in video",

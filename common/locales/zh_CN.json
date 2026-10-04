@@ -170,6 +170,7 @@
         "toggleCondensedPlayback": "切换压缩播放",
         "toggleFastForwardPlayback": "切换快进播放",
         "togglePlay": "播放 / 暂停",
+        "toggleFullscreen": "Toggle fullscreen",
         "toggleSubtitles": "显示 / 隐藏字幕",
         "toggleVideoSubtitleTrack1": "切换视频字幕轨道 1",
         "toggleVideoSubtitleTrack2": "切换视频字幕轨道 2",

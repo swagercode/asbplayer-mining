@@ -33,6 +33,11 @@ export const subtitleNavigationKeys = (keys: KeyBindSet, forward: boolean) => [
     ...microSubtitleNavigationKeys(keys, forward),
 ];
 
+export const microPauseKeys = (keys: KeyBindSet): string[] =>
+    hasMicroMiningKeys(keys) ? keyBindKeys(keys.bufferedMiningChoice3).filter((key) => key.toUpperCase() === 'D') : [];
+
+export const playbackToggleKeys = (keys: KeyBindSet) => [...keyBindKeys(keys.togglePlay), ...microPauseKeys(keys)];
+
 /** The original Micro setup replaced the keyboard keys. Preserve both on upgrade. */
 export function restoreMicroKeyboardKeys(keys: KeyBindSet, defaults: KeyBindSet): KeyBindSet {
     if (!hasMicroMiningKeys(keys)) return keys;

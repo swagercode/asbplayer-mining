@@ -471,6 +471,7 @@ export interface KeyBindSet {
     readonly bufferedMiningChoice8: KeyBind;
     readonly bufferedMiningChoice9: KeyBind;
     readonly togglePlay: KeyBind;
+    readonly toggleFullscreen: KeyBind;
     readonly toggleAutoPause: KeyBind;
     readonly toggleCondensedPlayback: KeyBind;
     readonly toggleFastForwardPlayback: KeyBind;

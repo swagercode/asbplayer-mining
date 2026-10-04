@@ -556,6 +556,7 @@ const settingsSchema = {
                 bufferedMiningChoice8: { $ref: '/KeyBind' },
                 bufferedMiningChoice9: { $ref: '/KeyBind' },
                 togglePlay: { $ref: '/KeyBind' },
+                toggleFullscreen: { $ref: '/KeyBind' },
                 toggleAutoPause: { $ref: '/KeyBind' },
                 toggleCondensedPlayback: { $ref: '/KeyBind' },
                 toggleFastForwardPlayback: { $ref: '/KeyBind' },

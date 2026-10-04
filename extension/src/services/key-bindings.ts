@@ -8,8 +8,10 @@ import type {
 } from '@project/common';
 import { PlayMode } from '@project/common';
 import type { KeyBindSet } from '@project/common/settings';
-import { ApplyStrategy, TokenState } from '@project/common/settings';
+import { ApplyStrategy, keyBindKeys, microPauseKeys, TokenState } from '@project/common/settings';
 import { DefaultKeyBinder } from '@project/common/key-binder';
+import { bindSingleKeyShortcut, matchesPlaybackShortcut } from '@project/common/key-binder/single-key-shortcut';
+import { toggleVideoFullscreen } from '@project/extension/src/services/video-fullscreen';
 import type Binding from '@project/extension/src/services/binding';
 
 type Unbinder = (() => void) | false;
@@ -18,6 +20,8 @@ export default class KeyBindings {
     private _keyBinder: DefaultKeyBinder | undefined;
 
     private _unbindPlay: Unbinder = false;
+    private _unbindFullscreen: Unbinder = false;
+    private _keys?: KeyBindSet;
     private _unbindAutoPause: Unbinder = false;
     private _unbindCondensedPlayback: Unbinder = false;
     private _unbindFastForwardPlayback: Unbinder = false;
@@ -48,6 +52,7 @@ export default class KeyBindings {
     }
 
     setKeyBindSet(context: Binding, keyBindSet: KeyBindSet) {
+        this._keys = keyBindSet;
         this._keyBinder = new DefaultKeyBinder(keyBindSet);
         this.unbind();
         this.bind(context);
@@ -73,9 +78,21 @@ export default class KeyBindings {
                     context.pause();
                 }
             },
-            () => !context.synced,
+            (event) =>
+                !context.synced ||
+                (document.querySelector('[data-asbplayer-mining-choices]') !== null &&
+                    matchesPlaybackShortcut(microPauseKeys(this._keys!), event)),
             true
         );
+
+        this._unbindFullscreen = bindSingleKeyShortcut(keyBindKeys(this._keys!.toggleFullscreen), (event) => {
+            if (!context.video.isConnected) return false;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (!event.repeat)
+                void toggleVideoFullscreen(context.video).catch((error) => asbError('key-bindings', error));
+            return true;
+        });
 
         this._unbindAutoPause = this._keyBinder.bindAutoPause(
             (event) => {
@@ -399,6 +416,10 @@ export default class KeyBindings {
     }
 
     unbind() {
+        if (this._unbindFullscreen) {
+            this._unbindFullscreen();
+            this._unbindFullscreen = false;
+        }
         if (this._unbindPlay) {
             this._unbindPlay();
             this._unbindPlay = false;
