@@ -1,6 +1,13 @@
-import { defaultSettings, keyBindKeys, miningChoiceKeyBindNames } from '@project/common/settings';
+import {
+    defaultSettings,
+    keyBindKeys,
+    miningChoiceKeyBindNames,
+    subtitleNavigationKeys,
+} from '@project/common/settings';
 import { bindPriorityNavigationKeys } from '@project/common/key-binder/single-key-shortcut';
 import { BufferedMiningController } from '@project/extension/src/services/buffered-mining';
+import KeyBindings from '@project/extension/src/services/key-bindings';
+import type Binding from '@project/extension/src/services/binding';
 
 const keys = {
     ...defaultSettings.keyBindSet,
@@ -12,6 +19,8 @@ const keys = {
     bufferedMiningChoice2: { keys: '2', alternateKeys: 'F' },
     bufferedMiningChoice3: { keys: '3', alternateKeys: 'D' },
     bufferedMiningChoice4: { keys: '4', alternateKeys: 'E' },
+    seekToPreviousSubtitle: { keys: 'S', alternateKeys: 'K' },
+    seekToNextSubtitle: { keys: 'right', alternateKeys: 'M' },
 };
 const options = ['労力', '成果', '栄誉', '賢人'].map((word, index) => ({
     word,
@@ -29,6 +38,8 @@ describe('keyboard and Micro together', () => {
     let send: jest.Mock;
     let site: jest.Mock;
     let explain: jest.SpyInstance;
+    let navigation: KeyBindings;
+    let seek: jest.Mock;
     const press = async (key: string) => {
         for (const type of ['keydown', 'keypress', 'keyup']) {
             const event = new KeyboardEvent(type, { key, bubbles: true, cancelable: true });
@@ -49,11 +60,15 @@ describe('keyboard and Micro together', () => {
             ),
             bindPriorityNavigationKeys(
                 [
-                    keys.bufferedMiningNormal,
-                    keys.bufferedMiningAudio,
-                    keys.bufferedMiningCancel,
-                    keys.explainSentence,
-                ].flatMap(keyBindKeys),
+                    ...subtitleNavigationKeys(keys, false),
+                    ...subtitleNavigationKeys(keys, true),
+                    ...[
+                        keys.bufferedMiningNormal,
+                        keys.bufferedMiningAudio,
+                        keys.bufferedMiningCancel,
+                        keys.explainSentence,
+                    ].flatMap(keyBindKeys),
+                ],
                 () => true
             ),
         ];
@@ -85,10 +100,26 @@ describe('keyboard and Micro together', () => {
         controller.setKeyBindSet(keys);
         explain = jest.spyOn(controller, 'explain').mockResolvedValue(undefined);
         controller.bind();
+        seek = jest.fn().mockResolvedValue(undefined);
+        navigation = new KeyBindings();
+        navigation.setKeyBindSet(
+            {
+                video,
+                synced: true,
+                navigationTimeMs: 3500,
+                seekableTracks: 1,
+                seek,
+                subtitleController: {
+                    subtitles: [1000, 3000, 5000].map((start) => ({ start, end: start + 1000, track: 0 })),
+                },
+            } as unknown as Binding,
+            keys
+        );
     });
 
     afterEach(() => {
         controller.unbind();
+        navigation.unbind();
         cleanup.forEach((unbind) => unbind());
         for (const type of ['keydown', 'keypress', 'keyup']) window.removeEventListener(type, site, true);
         explain.mockRestore();
@@ -115,6 +146,7 @@ describe('keyboard and Micro together', () => {
         expect(send.mock.calls.filter(([message]) => message.action === 'confirm-choice')).toHaveLength(1);
         expect(send).toHaveBeenCalledWith(expect.objectContaining({ action: 'confirm-choice', cardType: type }));
         expect(site).not.toHaveBeenCalled();
+        expect(seek).not.toHaveBeenCalled();
     });
 
     it.each(['b', 'j'])('cancels with %s without creating a card', async (cancel) => {
@@ -126,17 +158,28 @@ describe('keyboard and Micro together', () => {
         expect(site).not.toHaveBeenCalled();
     });
 
-    it('reserves shared F for choices, while F outside the chooser and R2 still explain', async () => {
+    it('uses the horizontal D-pad for navigation, then choices, then navigation again', async () => {
+        await press('e');
         await press('f');
-        expect(explain).toHaveBeenCalledTimes(1);
+        expect(seek.mock.calls.map(([time]) => time)).toEqual([1000, 5000]);
+        expect(explain).not.toHaveBeenCalled();
+        seek.mockClear();
         await press('n');
         await press('r');
-        expect(explain).toHaveBeenCalledTimes(2);
+        expect(explain).toHaveBeenCalledTimes(1);
         await press('f');
-        expect(explain).toHaveBeenCalledTimes(2);
+        expect(explain).toHaveBeenCalledTimes(1);
+        expect(seek).not.toHaveBeenCalled();
         expect(send).toHaveBeenCalledWith(expect.objectContaining({ action: 'choose', index: 1 }));
         await press('f');
-        expect(explain).toHaveBeenCalledTimes(3);
+        expect(seek).toHaveBeenCalledWith(5000);
+        expect(explain).toHaveBeenCalledTimes(1);
+        expect(site).not.toHaveBeenCalled();
+    });
+
+    it.each(['s', 'k', 'm', 'ArrowRight'])('keeps the existing %s navigation key', async (key) => {
+        await press(key);
+        expect(seek).toHaveBeenCalledTimes(1);
         expect(site).not.toHaveBeenCalled();
     });
 });

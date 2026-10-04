@@ -1,7 +1,7 @@
 import type { SubtitleModel } from '@project/common/src/model';
 import hotkeys from 'hotkeys-js';
 import type { KeyBindSet, SeekableTracks, TokenStatus } from '@project/common/settings';
-import { isTrackSeekable, keyBindKeys } from '@project/common/settings';
+import { isTrackSeekable, keyBindKeys, subtitleNavigationKeys } from '@project/common/settings';
 import { bindSingleKeyShortcut, supportsPlaybackShortcut } from '@project/common/key-binder/single-key-shortcut';
 
 export function adjacentSubtitle(
@@ -445,8 +445,8 @@ export class DefaultKeyBinder implements KeyBinder {
 
             return false;
         };
-        const previousShortcut = keyBindKeys(this.keyBindSet.seekToPreviousSubtitle);
-        const nextShortcut = keyBindKeys(this.keyBindSet.seekToNextSubtitle);
+        const previousShortcut = subtitleNavigationKeys(this.keyBindSet, false);
+        const nextShortcut = subtitleNavigationKeys(this.keyBindSet, true);
         const previousHandler = (event: KeyboardEvent) => delegate(event, false);
         const nextHandler = (event: KeyboardEvent) => delegate(event, true);
 

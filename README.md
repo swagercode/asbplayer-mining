@@ -31,7 +31,7 @@ Screenshots use Chrome's capture API when available. If the dictionary parser mi
 
 These can all be changed under **Settings → Keyboard Shortcuts**. The mining controls work in fullscreen.
 
-The existing 8BitDo Micro layout now keeps those keyboard shortcuts alongside its button mappings. Both bindings are editable in settings, and the chooser still shows D-pad arrows. The Micro sends keyboard letters, so its right D-pad and the keyboard's **F** share a key: while choices are visible, F picks the second word. Outside the chooser, F explains the sentence; **R2** can explain in either case.
+The 8BitDo Micro keeps the keyboard shortcuts alongside its button mappings. Left and right jump to the previous and next subtitle; while choosing a word, they select the fourth and second choices instead. The chooser shows D-pad arrows. **R2** opens or closes the explanation. The Micro sends keyboard letters, so its right D-pad and the keyboard's **F** share a key: with this layout, F also jumps to the next subtitle outside the chooser. Both bindings are editable in settings.
 
 ## Setup
 

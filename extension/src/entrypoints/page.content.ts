@@ -1,4 +1,9 @@
-import { defaultSettings, keyBindKeys, miningChoiceKeyBindNames } from '@project/common/settings';
+import {
+    defaultSettings,
+    keyBindKeys,
+    miningChoiceKeyBindNames,
+    subtitleNavigationKeys,
+} from '@project/common/settings';
 import { observeKeyBindSet } from '@/services/key-bind-settings';
 import { currentPageDelegate } from '@/services/pages';
 import { bindPriorityNavigationKeys } from '@project/common/key-binder/single-key-shortcut';
@@ -36,16 +41,17 @@ export default defineContentScript({
             // Install before the site's window capture listeners, then update keys in place.
             cleanup.push(
                 bindPriorityNavigationKeys(
-                    () =>
-                        [
+                    () => [
+                        ...subtitleNavigationKeys(keys, false),
+                        ...subtitleNavigationKeys(keys, true),
+                        ...[
                             keys.togglePlay,
-                            keys.seekToPreviousSubtitle,
-                            keys.seekToNextSubtitle,
                             keys.seekToBeginningOfCurrentSubtitle,
                             keys.bufferedMiningNormal,
                             keys.bufferedMiningAudio,
                             keys.explainSentence,
                         ].flatMap(keyBindKeys),
+                    ],
                     () => /\/watch\//.test(location.pathname)
                 )
             );

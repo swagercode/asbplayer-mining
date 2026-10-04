@@ -143,7 +143,9 @@ export default class KeyBindings {
                 event.stopImmediatePropagation();
                 void context.seek(subtitle.start);
             },
-            () => context.subtitleController.subtitles.length === 0,
+            () =>
+                context.subtitleController.subtitles.length === 0 ||
+                document.querySelector('[data-asbplayer-mining-choices]') !== null,
             () => context.navigationTimeMs,
             () => context.subtitleController.subtitles,
             () => context.seekableTracks,
@@ -161,7 +163,7 @@ export default class KeyBindings {
                     void context.seek(Math.max(0, context.navigationTimeMs - context.seekDurationMs));
                 }
             },
-            () => !context.synced,
+            () => !context.synced || document.querySelector('[data-asbplayer-mining-choices]') !== null,
             true
         );
 

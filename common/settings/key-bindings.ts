@@ -14,9 +14,24 @@ const microMiningKeys = {
 } as const;
 
 export const hasMicroMiningKeys = (keys: KeyBindSet) =>
-    Object.entries(microMiningKeys).every(([name, key]) =>
-        keyBindKeys(keys[name as KeyBindName]).some((value) => value.toUpperCase() === key)
+    Object.entries(microMiningKeys).every(
+        ([name, key]) =>
+            keys[name as KeyBindName] &&
+            keyBindKeys(keys[name as KeyBindName]).some((value) => value.toUpperCase() === key)
     );
+
+/** The Micro's horizontal D-pad doubles as subtitle navigation outside the chooser. */
+export function microSubtitleNavigationKeys(keys: KeyBindSet, forward: boolean): string[] {
+    if (!hasMicroMiningKeys(keys)) return [];
+    return keyBindKeys(keys[forward ? 'bufferedMiningChoice2' : 'bufferedMiningChoice4']).filter(
+        (key) => key.toUpperCase() === (forward ? 'F' : 'E')
+    );
+}
+
+export const subtitleNavigationKeys = (keys: KeyBindSet, forward: boolean) => [
+    ...keyBindKeys(keys[forward ? 'seekToNextSubtitle' : 'seekToPreviousSubtitle']),
+    ...microSubtitleNavigationKeys(keys, forward),
+];
 
 /** The original Micro setup replaced the keyboard keys. Preserve both on upgrade. */
 export function restoreMicroKeyboardKeys(keys: KeyBindSet, defaults: KeyBindSet): KeyBindSet {

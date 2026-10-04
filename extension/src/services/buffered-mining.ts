@@ -1,4 +1,9 @@
-import { defaultSettings, keyBindKeys, miningChoiceKeyBindNames } from '@project/common/settings';
+import {
+    defaultSettings,
+    keyBindKeys,
+    microSubtitleNavigationKeys,
+    miningChoiceKeyBindNames,
+} from '@project/common/settings';
 import { matchesPlaybackShortcut } from '@project/common/key-binder/single-key-shortcut';
 import type { KeyBindSet } from '@project/common/settings';
 import { SentenceExplanationView } from '@project/extension/src/services/sentence-explanation';
@@ -188,8 +193,12 @@ export class BufferedMiningController {
             (event) =>
                 this.video.isConnected &&
                 (this.explanation !== undefined || this.subtitles().length > 0) &&
-                // The Micro's right D-pad emits F, also the keyboard Explain key.
-                // Let the chooser own that press; R2's distinct key still explains.
+                // Horizontal D-pad presses belong to navigation or word selection.
+                // R2's distinct key still opens and closes explanations.
+                !matchesPlaybackShortcut(
+                    [...microSubtitleNavigationKeys(this.keys, false), ...microSubtitleNavigationKeys(this.keys, true)],
+                    event
+                ) &&
                 !(
                     !this.explanation &&
                     document.querySelector('[data-asbplayer-mining-review]:not([data-asbplayer-mining-word])') &&
