@@ -1,12 +1,13 @@
 import json
 from pathlib import Path
 import tempfile
+import subprocess
 import time
 import unittest
 from unittest.mock import Mock, patch
 import uuid
 
-from luna_fallback import generate, validate
+from luna_fallback import generate, validate, REQUEST_TIMEOUT
 from pipeline import Pipeline
 from service import Queue
 
@@ -38,12 +39,30 @@ class LunaFallbackTests(unittest.TestCase):
             self.assertIn('service_tier="fast"', args)
             self.assertIn('features.shell_tool=false', args)
             self.assertNotIn('OPENAI_API_KEY', kwargs['env'])
+            self.assertEqual(kwargs['timeout'], REQUEST_TIMEOUT)
             self.assertEqual(json.loads(kwargs['input'])['sentence'], SENTENCE)
             Path(args[args.index('--output-last-message') + 1]).write_text(json.dumps(ANSWER))
             return Mock(returncode=0)
         with patch('luna_fallback.subprocess.run', side_effect=answer) as run:
             self.assertEqual(generate({'codex': '/codex'}, SENTENCE, CANDIDATES), WORD)
         run.assert_called_once()
+
+    def test_timeout_has_a_short_message_without_command_or_local_paths(self):
+        timeout = subprocess.TimeoutExpired(['/private/bridge/codex', '--private-value', 'secret'], REQUEST_TIMEOUT)
+        with patch('luna_fallback.subprocess.run', side_effect=timeout) as run:
+            with self.assertRaisesRegex(ValueError, '^Missing-word lookup timed out\\.') as caught:
+                generate({'codex': '/private/bridge/codex'}, SENTENCE, CANDIDATES)
+        self.assertNotIn('/private', str(caught.exception))
+        self.assertNotIn('secret', str(caught.exception))
+        self.assertLess(len(str(caught.exception)), 100)
+        self.assertIsNone(caught.exception.__cause__)
+        run.assert_called_once()
+
+    def test_bridge_start_failure_does_not_expose_the_executable_path(self):
+        with patch('luna_fallback.subprocess.run', side_effect=FileNotFoundError('/private/bridge/codex')):
+            with self.assertRaisesRegex(ValueError, '^The missing-word lookup could not start\\.') as caught:
+                generate({'codex': '/private/bridge/codex'}, SENTENCE, CANDIDATES)
+        self.assertNotIn('/private', str(caught.exception))
 
     def test_generated_card_bypasses_dictionary_lookup_and_escapes_generated_text(self):
         pipeline = Pipeline({'card_format': 'Expression', 'deck': 'Mining',
@@ -166,6 +185,34 @@ class UnparsedQueueTests(unittest.TestCase):
         self.assertEqual(self.queue.jobs[self.id]['options'][0]['word'], '死域')
         self.queue.pipeline.rank.assert_called_once()
         self.assertEqual(self.queue.pipeline.recover_unparsed.call_count, 2)
+        self.queue.pipeline.export.assert_not_called()
+
+    def test_fallback_failure_keeps_dictionary_choices_and_does_not_repeat_requests(self):
+        option = {'index': 0, 'word': '死', 'reading': 'し', 'confidence': .8}
+        self.queue.pipeline.rank.return_value['options'] = [option]
+        self.queue.pipeline.recover_unparsed.side_effect = ValueError('Missing-word lookup timed out.')
+        self.queue.change(self.id, hasMedia=True)
+        self.queue.rank(self.id)
+        result = self.queue.handle({'action': 'job-status', 'id': self.id})
+        self.assertEqual(result['state'], 'awaiting choice')
+        self.assertEqual(result['options'], [option])
+        self.assertEqual(result['error'], '')
+        self.assertEqual(self.queue.jobs[self.id]['recoveryWarning'], 'Missing-word lookup timed out.')
+        self.assertIsNone(self.queue.jobs[self.id]['recoveredVocabulary'])
+        self.queue.rank(self.id)
+        self.queue.pipeline.rank.assert_called_once()
+        self.queue.pipeline.recover_unparsed.assert_called_once()
+        self.queue.pipeline.export.assert_not_called()
+
+    def test_cancel_during_fallback_failure_stays_cancelled(self):
+        self.queue.pipeline.rank.return_value['options'] = [{'index': 0, 'word': '死', 'confidence': .8}]
+        def recover(*_):
+            self.queue.cancel_choice(self.id)
+            raise ValueError('Missing-word lookup timed out.')
+        self.queue.pipeline.recover_unparsed.side_effect = recover
+        self.queue.rank(self.id)
+        self.assertEqual(self.queue.jobs[self.id]['state'], 'cancelled')
+        self.assertNotIn('options', self.queue.jobs[self.id])
         self.queue.pipeline.export.assert_not_called()
 
 

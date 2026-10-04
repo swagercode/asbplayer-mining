@@ -251,7 +251,18 @@ class Queue:
                     if job['state'] in ('cancelled', 'failed'):
                         return
                 if 'recoveredVocabulary' not in job:
-                    recovered = self.pipeline.recover_unparsed(job['subtitle']['text'], candidates)
+                    try:
+                        recovered = self.pipeline.recover_unparsed(job['subtitle']['text'], candidates)
+                    except ValueError as error:
+                        if not options:
+                            raise
+                        # The optional generated entry must not discard valid
+                        # Yomitan choices or spend another request on re-ranking.
+                        with self.lock:
+                            if job['state'] in ('cancelled', 'failed'):
+                                return
+                            self.change(job_id, recoveryWarning=str(error))
+                        recovered = None
                     with self.lock:
                         if job['state'] in ('cancelled', 'failed'):
                             return

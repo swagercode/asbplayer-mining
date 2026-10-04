@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 
 MODEL = 'gpt-6-luna'
+REQUEST_TIMEOUT = 30
 TEXT_FIELDS = ('surface', 'term', 'reading', 'definition', 'definitionEnglish', 'sentenceTranslation')
 INSTRUCTIONS = '''A Japanese vocabulary parser could not represent the word worth mining.
 Identify the hardest useful vocabulary actually spoken in this sentence that is MISSING as a whole from
@@ -73,9 +74,16 @@ def generate(config, sentence, candidates):
                         'computer_use', 'image_generation', 'code_mode', 'memories'):
             args += ['-c', 'features.' + feature + '=false']
         args.append('-')
-        result = subprocess.run(args, input=json.dumps({'sentence': sentence, 'candidates': candidates},
-                                                       ensure_ascii=False), text=True, capture_output=True,
-                                env=env, cwd=work, timeout=120)
+        try:
+            result = subprocess.run(args, input=json.dumps({'sentence': sentence, 'candidates': candidates},
+                                                           ensure_ascii=False), text=True, capture_output=True,
+                                    env=env, cwd=work, timeout=REQUEST_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            # TimeoutExpired includes the full invocation, including local paths.
+            # Only this short message belongs in the player's overlay.
+            raise ValueError('Missing-word lookup timed out. Skip this word and try again.') from None
+        except OSError:
+            raise ValueError('The missing-word lookup could not start. Check the local ChatGPT bridge.') from None
         if result.returncode or not output.exists():
             raise ValueError('Luna could not recover the missing vocabulary. Check ChatGPT login/usage and retry.')
         return validate(json.loads(output.read_text()), sentence, candidates)
