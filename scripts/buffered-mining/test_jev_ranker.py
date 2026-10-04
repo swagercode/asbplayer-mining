@@ -2,7 +2,7 @@ import io
 import json
 import unittest
 import urllib.error
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from jev_ranker import (boundary_contexts, options_from, payload_for, rank, respects_reading_guide,
                         should_recover_unparsed, uncovered_kanji_spans)
@@ -172,6 +172,48 @@ class RankedJevTests(unittest.TestCase):
                 self.raw['answers']['word_1']['probabilities'] = scores
                 options = options_from('', self.words, self.raw, self.surfaces, .05)
                 self.assertEqual([o['reading'] for o in options], ['ろうりょく'])
+
+    def test_one_contextual_entry_for_a_kana_surface_with_competing_kanji_forms(self):
+        words = [{'surface': 'うつらぬ', 'term': word, 'reading': 'うつる'}
+                 for word in ('うつる', '写る', '映る', '移る', '遷る')]
+        words.append({'surface': '眼', 'term': '眼', 'reading': 'め'})
+        surfaces = ['うつらぬ', '眼']
+        raw = {'answers': {'selection': {'probabilities': {
+            '0': .26, '1': .01, '2': .14, '3': .01, '4': .08, '5': .15, '-1': .35}},
+            'name_0': {'noul': .02}, 'name_1': {'noul': .01},
+            'boundary_0': {'noul': .87}, 'boundary_1': {'noul': .95}}}
+        self.alternatives(raw, words, surfaces, {'うつらぬ': .61})
+        raw['answers']['word_0']['probabilities'] = {
+            '0': .25, '1': .03, '2': .64, '3': .02, '4': 0, '-1': .06}
+        # Resolve spelling before kanji preference can substitute the first
+        # broadly matching dictionary sense. No additional model or lookup.
+        pipeline = Pipeline({'jev_api_key': 'test_placeholder'})
+        pipeline.yomi = Mock(side_effect=AssertionError('No lookup needed for chosen kanji'))
+        with patch('jev_ranker.urllib.request.urlopen', return_value=io.BytesIO(json.dumps(raw).encode())) as request:
+            result = pipeline.rank('ヒトの眼にうつらぬ様に成る事も多々', words)
+        request.assert_called_once()
+        self.assertEqual([(o['word'], o['index'], o['confidence']) for o in result['options']],
+                         [('映る', 2, .26), ('眼', 5, .15)])
+        pipeline.yomi.assert_not_called()
+
+    def test_contextual_spelling_can_win_even_when_its_global_rank_is_below_display_cutoff(self):
+        words = [{'surface': 'あう', 'term': word, 'reading': 'あう'} for word in ('会う', '合う')]
+        raw = {'answers': {'selection': {'probabilities': {'0': .8, '1': .01, '-1': .19}},
+                          'name_0': {'noul': .01}, 'boundary_0': {'noul': .95}}}
+        self.alternatives(raw, words, ['あう'])
+        raw['answers']['word_0']['probabilities'] = {'0': .03, '1': .95, '-1': .02}
+        options = options_from('二人の意見があう', words, raw, ['あう'], .05)
+        self.assertEqual([(o['word'], o['confidence']) for o in options], [('合う', .8)])
+
+    def test_different_words_with_the_same_reading_remain_separate_choices(self):
+        words = [{'surface': word, 'term': word, 'reading': 'はし'} for word in ('橋', '箸')]
+        surfaces = ['橋', '箸']
+        raw = {'answers': {'selection': {'probabilities': {'0': .55, '1': .45}},
+                          'name_0': {'noul': .01}, 'name_1': {'noul': .01},
+                          'boundary_0': {'noul': .95}, 'boundary_1': {'noul': .95}}}
+        self.alternatives(raw, words, surfaces)
+        self.assertEqual([o['word'] for o in options_from('橋の上で箸を落とした', words, raw, surfaces, .05)],
+                         ['橋', '箸'])
 
     def test_independent_alternatives_do_not_restore_names_or_weak_boundaries(self):
         self.raw['answers']['selection']['probabilities'] = {'-1': 1}

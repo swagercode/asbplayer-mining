@@ -155,8 +155,9 @@ def probability(value):
 
 
 def independent_scores(sentence, candidates, answers, surfaces):
-    """Score alternatives without making different words divide one probability mass."""
+    """Resolve each surface's entry and independently score useful alternatives."""
     scores = {}
+    contextual_choices = {}
     for i, surface in enumerate(surfaces):
         usefulness = probability(answers[f'useful_{i}']['noul'])
         probabilities = answers[f'word_{i}']['probabilities']
@@ -168,12 +169,15 @@ def independent_scores(sentence, candidates, answers, surfaces):
             probability(value)
             if key not in eligible and key != '-1':
                 raise ValueError('Jev returned a word outside its surface group.')
+        fitting = {key: value for key, value in probabilities.items() if key in eligible}
+        if fitting:
+            contextual_choices[surface] = int(max(fitting, key=fitting.get))
         # An ambiguous or explicitly rejected word must not be rescued by a
         # high usefulness score for another sense of the same scanner surface.
         best = max(probabilities, key=probabilities.get)
         if best != '-1' and probabilities[best] > WORD_CONFIDENCE_THRESHOLD:
             scores[int(best)] = min(usefulness, probabilities[best])
-    return scores
+    return scores, contextual_choices
 
 
 def options_from(sentence, candidates, raw, surfaces, threshold,
@@ -189,7 +193,7 @@ def options_from(sentence, candidates, raw, surfaces, threshold,
     probabilities = answers['selection']['probabilities']
     if not isinstance(probabilities, dict) or not probabilities:
         raise ValueError('Jev did not return candidate probabilities.')
-    alternatives = independent_scores(sentence, candidates, answers, surfaces)
+    alternatives, contextual_choices = independent_scores(sentence, candidates, answers, surfaces)
     # A global ranking can assign residual probability to a dictionary homophone
     # that the contextual check confidently rejected. Honor that rejection for
     # every option, without confusing uncertainty between valid readings with
@@ -205,8 +209,16 @@ def options_from(sentence, candidates, raw, surfaces, threshold,
             raise ValueError('Jev returned an unknown dictionary candidate.')
         selection_scores[int(key)] = confidence
     ranked = []
-    for index, word in enumerate(candidates):
-        selection = selection_scores.get(index, 0)
+    for surface in surfaces:
+        index = contextual_choices.get(surface)
+        if index is None:
+            continue
+        word = candidates[index]
+        # Ranking says which surface is worth mining; the contextual question
+        # resolves its dictionary entry. Never show competing kanji spellings
+        # or readings of one scanner surface as separate vocabulary choices.
+        selection = max((selection_scores.get(i, 0) for i, c in enumerate(candidates)
+                         if c['surface'] == surface and respects_reading_guide(sentence, c)), default=0)
         alternative = alternatives.get(index, 0)
         if not (selection > 0 and selection >= threshold or alternative > 0 and alternative >= alternative_threshold):
             continue
